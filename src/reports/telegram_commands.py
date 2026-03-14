@@ -435,6 +435,10 @@ async def preference_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await remove_preference(pool, user_id, "watchlist", show_id, "show")
         await query.edit_message_text("Спектакль удалён из списка.")
 
+    elif data.startswith("review:"):
+        show_id = int(data.split(":")[1])
+        await _handle_review_callback(query, context, pool, show_id)
+
     elif data == "goto_favorites":
         await _show_favorites_inline(query, pool, user_id)
 
@@ -517,6 +521,51 @@ async def _show_watchlist_inline(query, pool, user_id: int) -> None:
         "\n".join(lines), parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
+async def _handle_review_callback(query, context, pool, show_id: int) -> None:
+    """Обработка кнопки «📝 Рецензия»."""
+    from src.db.queries.reviews import get_review, save_review, get_show_for_review
+    from src.brain.review_builder import build_review, REVIEW_MODEL
+
+    # Проверяем кэш
+    cached = await get_review(pool, show_id)
+    if cached:
+        await _send_review(query, context.bot, cached["content"], show_id, pool, from_cache=True)
+        return
+
+    # Генерируем
+    await query.answer("Генерирую рецензию...")
+
+    show = await get_show_for_review(pool, show_id)
+    if not show:
+        await query.answer("Спектакль не найден", show_alert=True)
+        return
+
+    content = await build_review(show)
+    await save_review(pool, show_id, content, REVIEW_MODEL)
+    await _send_review(query, context.bot, content, show_id, pool, from_cache=False)
+
+
+async def _send_review(query, bot, content: str, show_id: int, pool, from_cache: bool) -> None:
+    """Отправить рецензию в чат."""
+    from src.db.queries.reviews import get_show_for_review
+
+    show = await get_show_for_review(pool, show_id)
+    chat_id = query.message.chat_id
+
+    link = ""
+    if show:
+        if show.get("slug"):
+            link = f'\n\n<a href="https://kudago.com/msk/event/{show["slug"]}/">📍 Страница в афише</a>'
+        elif show.get("theater_url"):
+            link = f'\n\n<a href="{show["theater_url"]}">🏛 Сайт театра</a>'
+
+    cache_note = "\n<i>📦 из кэша</i>" if from_cache else ""
+
+    text = f"{content}{link}{cache_note}"
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML",
+                           disable_web_page_preview=False)
 
 
 async def _update_card_button(query, old_data: str, new_text: str) -> None:

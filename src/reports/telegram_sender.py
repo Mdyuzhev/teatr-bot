@@ -89,19 +89,24 @@ def build_show_card_keyboard(show: dict, has_fav: bool = False,
     theater_id = show.get("theater_id")
     show_id = show.get("show_id") or show.get("id")
 
-    buttons = []
+    row1 = []  # Билеты + Рецензия
+    row2 = []  # Избранное + Интересно
+
     if show.get("tickets_url"):
-        buttons.append(InlineKeyboardButton("🎟 Билеты", url=show["tickets_url"]))
+        row1.append(InlineKeyboardButton("🎟 Билеты", url=show["tickets_url"]))
+
+    if show_id:
+        row1.append(InlineKeyboardButton("📝 Рецензия", callback_data=f"review:{show_id}"))
 
     if theater_id:
         fav_text = "✅ Сохранён" if has_fav else "⭐ В избранное"
-        buttons.append(InlineKeyboardButton(fav_text, callback_data=f"fav:theater:{theater_id}"))
+        row2.append(InlineKeyboardButton(fav_text, callback_data=f"fav:theater:{theater_id}"))
 
     if show_id:
         wl_text = "📌 В списке" if has_wl else "🔖 Интересно"
-        buttons.append(InlineKeyboardButton(wl_text, callback_data=f"wl:show:{show_id}"))
+        row2.append(InlineKeyboardButton(wl_text, callback_data=f"wl:show:{show_id}"))
 
-    rows = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
+    rows = [r for r in [row1, row2] if r]
     return InlineKeyboardMarkup(rows) if rows else None
 
 

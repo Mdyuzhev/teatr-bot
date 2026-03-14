@@ -151,7 +151,7 @@ def main():
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("random", cmd_random))
     app.add_handler(CallbackQueryHandler(digest_callback, pattern="^digest_"))
-    app.add_handler(CallbackQueryHandler(preference_callback, pattern="^(fav:|wl:|rm_fav:|rm_wl:|goto_)"))
+    app.add_handler(CallbackQueryHandler(preference_callback, pattern="^(fav:|wl:|rm_fav:|rm_wl:|goto_|review:)"))
     app.add_handler(CallbackQueryHandler(theaters_callback, pattern="^(theaters_page:|theaters_search_page:|theater_shows:|theater_search_input)"))
     app.add_handler(CallbackQueryHandler(page_callback, pattern="^(page:|show_all:|noop)"))
     app.add_handler(CallbackQueryHandler(metro_callback, pattern="^metro_search$"))
