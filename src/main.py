@@ -33,6 +33,20 @@ async def scheduled_collection():
         logger.error("Ошибка планового сбора: {}", e)
 
 
+async def post_init(application):
+    """Запуск планировщика после старта event loop."""
+    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+    scheduler.add_job(
+        scheduled_collection,
+        "cron",
+        hour=config.COLLECTION_HOUR,
+        minute=0,
+        id="kudago_daily",
+    )
+    scheduler.start()
+    logger.info("Планировщик: сбор KudaGo каждый день в {:02d}:00 МСК", config.COLLECTION_HOUR)
+
+
 def main():
     """Запуск бота и планировщика."""
     # Валидация конфига
@@ -45,7 +59,7 @@ def main():
     logger.info("Запуск театрального бота")
 
     # Telegram Application
-    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     # Регистрация команд
     app.add_handler(CommandHandler("start", cmd_start))
@@ -58,18 +72,6 @@ def main():
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CallbackQueryHandler(digest_callback, pattern="^digest_"))
-
-    # Планировщик — сбор данных в COLLECTION_HOUR:00 МСК
-    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-    scheduler.add_job(
-        scheduled_collection,
-        "cron",
-        hour=config.COLLECTION_HOUR,
-        minute=0,
-        id="kudago_daily",
-    )
-    scheduler.start()
-    logger.info("Планировщик: сбор KudaGo каждый день в {:02d}:00 МСК", config.COLLECTION_HOUR)
 
     # Запуск polling
     logger.info("Бот запущен, ожидаю команды...")
