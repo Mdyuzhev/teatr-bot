@@ -10,11 +10,12 @@ async def get_shows_by_period(pool, date_from: date, date_to: date) -> list[dict
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.title, s.slug, s.genre, s.age_rating, s.is_premiere,
-                   s.description,
-                   t.name AS theater_name, t.slug AS theater_slug,
-                   t.address, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max
+            SELECT s.id AS show_id, s.title, s.slug, s.genre,
+                   s.age_rating, s.is_premiere, s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   t.slug AS theater_slug, t.address, t.metro,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
             FROM show_dates sd
             JOIN shows s ON s.id = sd.show_id
             JOIN theaters t ON t.id = s.theater_id
@@ -32,8 +33,11 @@ async def get_shows_by_theater(pool, theater_slug: str, date_from: date, date_to
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.title, s.slug, s.age_rating, s.is_premiere, s.description,
-                   sd.date, sd.time, sd.price_min, sd.price_max
+            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
+                   s.is_premiere, s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
             FROM show_dates sd
             JOIN shows s ON s.id = sd.show_id
             JOIN theaters t ON t.id = s.theater_id
@@ -55,9 +59,12 @@ async def get_premieres(pool, days: int = 30) -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.title, s.slug, s.age_rating, s.description,
-                   t.name AS theater_name, t.slug AS theater_slug, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max
+            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
+                   s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   t.slug AS theater_slug, t.metro,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
             FROM show_dates sd
             JOIN shows s ON s.id = sd.show_id
             JOIN theaters t ON t.id = s.theater_id

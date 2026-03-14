@@ -32,7 +32,7 @@ from src.db.queries.preferences import (
 )
 from src.brain.digest_builder import build_digest
 from src.scheduler.jobs import get_period_dates, PERIOD_LABELS, DIGEST_MODEL
-from src.reports.telegram_sender import send_message
+from src.reports.telegram_sender import send_message, send_shows_as_cards
 from src.collectors.kudago import KudaGoCollector
 from src.collectors.rss_feeds import RssCollector
 from src.config import config
@@ -44,7 +44,8 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["🎭 Сегодня", "📅 Выходные"],
         ["📆 Вся неделя", "🌟 Премьеры"],
-        ["🏛 Театры", "⚙️ Настройки"],
+        ["🏛 Театры", "🎲 Удивить меня"],
+        ["⚙️ Настройки"],
     ],
     resize_keyboard=True,
 )
@@ -108,45 +109,46 @@ async def digest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         label = f"Неделя ({date_from.strftime('%d.%m')}–{date_to.strftime('%d.%m')})"
 
     pool = await get_pool()
+    chat_id = query.message.chat_id
+    user_id = update.effective_user.id
 
-    # Сначала проверяем кэш
+    # Шапка из кэша
     cached = await get_fresh_digest(pool, period_key, date_from, date_to)
-    if cached:
-        await send_message(context.bot, query.message.chat_id, cached["content"])
-        return
+    if not cached:
+        await query.edit_message_text("Генерирую дайджест...")
+        await _generate_and_cache(pool, period_key, date_from, date_to, label)
+        cached = await get_fresh_digest(pool, period_key, date_from, date_to)
 
-    await query.edit_message_text("Генерирую дайджест...")
-    text = await _generate_and_cache(pool, period_key, date_from, date_to, label)
-    await send_message(context.bot, query.message.chat_id, text)
+    header = cached["content"] if cached else f"<b>{label}</b>"
+
+    # Карточки
+    digest_data = await get_digest_data(pool, date_from, date_to, limit=config.MAX_DIGEST_SHOWS)
+    await send_shows_as_cards(
+        context.bot, chat_id, digest_data["shows"], header,
+        pool=pool, user_id=user_id, period_key=period_key,
+    )
 
 
 # ── /today ──
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    pool = await get_pool()
-    date_from, date_to = get_period_dates("today")
-    text = await _get_or_generate(pool, "today", date_from, date_to, "Сегодня")
-    await send_message(context.bot, update.effective_chat.id, text)
+    await _send_digest_cards(update, context, "today", "Сегодня")
 
 
 # ── /weekend ──
 
 async def cmd_weekend(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    pool = await get_pool()
     date_from, date_to = get_period_dates("weekend")
     label = f"Выходные ({date_from.strftime('%d.%m')}–{date_to.strftime('%d.%m')})"
-    text = await _get_or_generate(pool, "weekend", date_from, date_to, label)
-    await send_message(context.bot, update.effective_chat.id, text)
+    await _send_digest_cards(update, context, "weekend", label)
 
 
 # ── /week ──
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    pool = await get_pool()
     date_from, date_to = get_period_dates("week")
     label = f"Неделя ({date_from.strftime('%d.%m')}–{date_to.strftime('%d.%m')})"
-    text = await _get_or_generate(pool, "week", date_from, date_to, label)
-    await send_message(context.bot, update.effective_chat.id, text)
+    await _send_digest_cards(update, context, "week", label)
 
 
 # ── /premieres ──
@@ -463,7 +465,7 @@ async def _update_card_button(query, old_data: str, new_text: str) -> None:
 # ── Обработка текстовых кнопок ReplyKeyboard ──
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Маршрутизация нажатий на кнопки закреплённой панели."""
+    """Маршрутизация нажатий на кнопки закреплённой панели + свободный поиск."""
     text = update.message.text
     handlers = {
         "🎭 Сегодня": cmd_today,
@@ -471,64 +473,255 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         "📆 Вся неделя": cmd_week,
         "🌟 Премьеры": cmd_premieres,
         "⚙️ Настройки": cmd_settings,
+        "🎲 Удивить меня": cmd_random,
     }
     handler = handlers.get(text)
     if handler:
         await handler(update, context)
     elif text == "🏛 Театры":
         await _cmd_theaters_list(update, context)
+    elif context.user_data.get("awaiting") == "metro_input":
+        context.user_data.pop("awaiting", None)
+        await _search_theaters_by_metro(update, context, text)
+    else:
+        # Свободный текстовый поиск
+        await _search_shows(update, context, query_text=text)
 
 
 async def _cmd_theaters_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Список театров с количеством предстоящих показов."""
+    """Список театров: избранные, популярные, поиск по метро."""
     from src.db.queries.theaters import get_all_theaters
     pool = await get_pool()
     theaters = await get_all_theaters(pool)
+    user_id = update.effective_user.id
+
     if not theaters:
         await send_message(context.bot, update.effective_chat.id, "Театров пока нет в базе.")
         return
 
-    lines = ["<b>Театры в базе</b>\n"]
-    for t in theaters[:20]:
+    # Разделяем на избранные и остальные
+    favs = await get_user_favorites(pool, user_id)
+    fav_ids = {f["id"] for f in favs}
+
+    lines = ["<b>Театры</b>\n"]
+
+    # Избранные
+    fav_theaters = [t for t in theaters if t["id"] in fav_ids]
+    if fav_theaters:
+        lines.append("⭐ <b>Мои избранные</b>")
+        for t in fav_theaters:
+            count = t.get("upcoming_shows", 0)
+            metro = f" · {t['metro']}" if t.get("metro") else ""
+            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
+        lines.append("")
+
+    # Популярные (топ-6 по количеству показов, исключая избранные)
+    popular = [t for t in theaters if t["id"] not in fav_ids and t.get("upcoming_shows", 0) > 0][:6]
+    if popular:
+        lines.append("🔥 <b>Популярные</b>")
+        for t in popular:
+            count = t.get("upcoming_shows", 0)
+            metro = f" · {t['metro']}" if t.get("metro") else ""
+            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
+        lines.append("")
+
+    # Все остальные
+    remaining = [t for t in theaters if t["id"] not in fav_ids and t not in popular]
+    if remaining:
+        lines.append(f"📍 <b>Все остальные</b> ({len(remaining)})")
+        for t in remaining[:10]:
+            count = t.get("upcoming_shows", 0)
+            metro = f" · {t['metro']}" if t.get("metro") else ""
+            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
+        if len(remaining) > 10:
+            lines.append(f"  ...и ещё {len(remaining) - 10}")
+
+    keyboard = [[InlineKeyboardButton("🚇 Найти по метро", callback_data="metro_search")]]
+    await update.message.reply_text(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ── Callback: поиск по метро ──
+
+async def metro_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка поиска театров по метро."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "metro_search":
+        context.user_data["awaiting"] = "metro_input"
+        await query.edit_message_text("🚇 Введите название станции метро:")
+
+
+# ── Поиск театров по метро ──
+
+async def _search_theaters_by_metro(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                     station: str) -> None:
+    """Поиск театров по названию станции метро."""
+    from src.db.queries.theaters import get_all_theaters
+    pool = await get_pool()
+    theaters = await get_all_theaters(pool)
+    found = [t for t in theaters if t.get("metro") and station.lower() in t["metro"].lower()]
+
+    if not found:
+        await send_message(context.bot, update.effective_chat.id,
+                           f"Театров рядом с «{station}» не найдено.")
+        return
+
+    lines = [f"🚇 <b>Театры у м. {station}</b>\n"]
+    for t in found:
         count = t.get("upcoming_shows", 0)
-        metro = f" · {t['metro']}" if t.get("metro") else ""
-        lines.append(f"🏛 <b>{t['name']}</b>{metro} — {count} показов")
-    if len(theaters) > 20:
-        lines.append(f"\n...и ещё {len(theaters) - 20} театров")
+        lines.append(f"🏛 <b>{t['name']}</b> — {count} показов")
     await send_message(context.bot, update.effective_chat.id, "\n".join(lines))
+
+
+# ── Callback: навигация по страницам ──
+
+async def page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка навигации ← Назад / Вперёд → между страницами карточек."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data.startswith("page:"):
+        parts = data.split(":")
+        period_key = parts[1]
+        page = int(parts[2])
+
+        date_from, date_to = get_period_dates(period_key)
+        pool = await get_pool()
+        user_id = update.effective_user.id
+
+        digest_data = await get_digest_data(pool, date_from, date_to, limit=config.MAX_DIGEST_SHOWS)
+        await send_shows_as_cards(
+            context.bot, query.message.chat_id, digest_data["shows"], "",
+            pool=pool, user_id=user_id, page=page, period_key=period_key,
+        )
+
+    elif data.startswith("show_all:"):
+        period_key = data.split(":")[1]
+        date_from, date_to = get_period_dates(period_key)
+        pool = await get_pool()
+        cached = await get_fresh_digest(pool, period_key, date_from, date_to)
+        if cached:
+            await send_message(context.bot, query.message.chat_id, cached["content"])
+        else:
+            await send_message(context.bot, query.message.chat_id, "Кэш дайджеста не найден.")
+
+    elif data == "noop":
+        pass
+
+
+# ── /random ──
+
+async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Случайный спектакль из ближайших 14 дней."""
+    pool = await get_pool()
+    today = date.today()
+    date_to = today + timedelta(days=14)
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
+                   s.is_premiere, s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   t.slug AS theater_slug, t.metro,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
+            FROM show_dates sd
+            JOIN shows s ON s.id = sd.show_id
+            JOIN theaters t ON t.id = s.theater_id
+            WHERE sd.date BETWEEN $1 AND $2
+              AND sd.is_cancelled = FALSE
+            ORDER BY RANDOM()
+            LIMIT 1
+            """,
+            today, date_to,
+        )
+
+    if not row:
+        await send_message(context.bot, update.effective_chat.id,
+                           "Не удалось найти спектакль.")
+        return
+
+    await send_shows_as_cards(
+        context.bot, update.effective_chat.id, [dict(row)],
+        "🎲 <b>Случайный спектакль</b>",
+        pool=pool, user_id=update.effective_user.id,
+    )
+
+
+# ── Поиск спектаклей ──
+
+async def _search_shows(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                        query_text: str) -> None:
+    """Поиск спектаклей и театров по тексту."""
+    pool = await get_pool()
+    today = date.today()
+    date_to = today + timedelta(days=30)
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
+                   s.is_premiere, s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   t.slug AS theater_slug, t.metro,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
+            FROM show_dates sd
+            JOIN shows s ON s.id = sd.show_id
+            JOIN theaters t ON t.id = s.theater_id
+            WHERE sd.date BETWEEN $1 AND $2
+              AND sd.is_cancelled = FALSE
+              AND (
+                  LOWER(s.title) LIKE $3
+                  OR LOWER(t.name) LIKE $3
+              )
+            ORDER BY sd.date, sd.time
+            LIMIT 20
+            """,
+            today, date_to, f"%{query_text.lower()}%",
+        )
+
+    if not rows:
+        await send_message(context.bot, update.effective_chat.id,
+                           f"По запросу «{query_text}» ничего не найдено.")
+        return
+
+    shows = [dict(r) for r in rows]
+    await send_shows_as_cards(
+        context.bot, update.effective_chat.id, shows,
+        f"🔍 Поиск: <b>{query_text}</b> ({len(shows)} показов)",
+        pool=pool, user_id=update.effective_user.id,
+    )
 
 
 # ── helpers ──
 
-def build_show_card_keyboard(show: dict, user_id: int | None = None,
-                              has_fav: bool = False, has_wl: bool = False) -> InlineKeyboardMarkup:
-    """Построить inline-кнопки для карточки спектакля."""
-    theater_id = show.get("theater_id")
-    show_id = show.get("show_id") or show.get("id")
+async def _send_digest_cards(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                              period_key: str, label: str) -> None:
+    """Отправить дайджест как карточки: шапка из кэша + карточки с кнопками."""
+    pool = await get_pool()
+    date_from, date_to = get_period_dates(period_key)
+    user_id = update.effective_user.id
 
-    buttons = []
-    if show.get("tickets_url"):
-        buttons.append(InlineKeyboardButton("🎟 Билеты", url=show["tickets_url"]))
-
-    if theater_id:
-        fav_text = "✅ Сохранён" if has_fav else "⭐ В избранное"
-        buttons.append(InlineKeyboardButton(fav_text, callback_data=f"fav:theater:{theater_id}"))
-
-    if show_id:
-        wl_text = "📌 В списке" if has_wl else "🔖 Интересно"
-        buttons.append(InlineKeyboardButton(wl_text, callback_data=f"wl:show:{show_id}"))
-
-    # Разбиваем на ряды по 3 кнопки
-    rows = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
-    return InlineKeyboardMarkup(rows)
-
-
-async def _get_or_generate(pool, period_key: str, date_from, date_to, label: str) -> str:
-    """Читаем из кэша, при отсутствии — генерируем и сохраняем."""
     cached = await get_fresh_digest(pool, period_key, date_from, date_to)
-    if cached:
-        return cached["content"]
-    return await _generate_and_cache(pool, period_key, date_from, date_to, label)
+    if not cached:
+        await send_message(context.bot, update.effective_chat.id, "Генерирую дайджест...")
+        await _generate_and_cache(pool, period_key, date_from, date_to, label)
+        cached = await get_fresh_digest(pool, period_key, date_from, date_to)
+
+    header = cached["content"] if cached else f"<b>{label}</b>"
+
+    digest_data = await get_digest_data(pool, date_from, date_to, limit=config.MAX_DIGEST_SHOWS)
+    await send_shows_as_cards(
+        context.bot, update.effective_chat.id, digest_data["shows"], header,
+        pool=pool, user_id=user_id, period_key=period_key,
+    )
 
 
 async def _generate_and_cache(pool, period_key: str, date_from, date_to, label: str) -> str:

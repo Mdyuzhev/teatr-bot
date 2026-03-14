@@ -47,20 +47,23 @@ class TestDigestCallback:
         query.data = "digest_today"
         query.message.chat_id = 12345
         update.callback_query = query
+        update.effective_user.id = 111
 
         with patch("src.reports.telegram_commands.get_pool") as mock_gp, \
              patch("src.reports.telegram_commands.get_fresh_digest") as mock_cache, \
+             patch("src.reports.telegram_commands.get_digest_data") as mock_dd, \
              patch("src.reports.telegram_commands.build_digest") as mock_bd, \
-             patch("src.reports.telegram_commands.send_message") as mock_sm:
+             patch("src.reports.telegram_commands.send_shows_as_cards") as mock_cards:
 
             mock_gp.return_value = AsyncMock()
             mock_cache.return_value = {"content": "Кэшированный дайджест"}
+            mock_dd.return_value = {"shows": [], "premieres": [], "stats": {}}
 
             await digest_callback(update, mock_context)
 
             query.answer.assert_awaited_once()
             mock_bd.assert_not_awaited()  # LLM не вызывался
-            mock_sm.assert_awaited_once()
+            mock_cards.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_digest_today_no_cache(self, mock_context):
@@ -72,6 +75,7 @@ class TestDigestCallback:
         query.data = "digest_today"
         query.message.chat_id = 12345
         update.callback_query = query
+        update.effective_user.id = 111
 
         with patch("src.reports.telegram_commands.get_pool") as mock_gp, \
              patch("src.reports.telegram_commands.get_fresh_digest") as mock_cache, \
@@ -79,10 +83,11 @@ class TestDigestCallback:
              patch("src.reports.telegram_commands.get_recent_news") as mock_rn, \
              patch("src.reports.telegram_commands.build_digest") as mock_bd, \
              patch("src.reports.telegram_commands.save_digest") as mock_save, \
-             patch("src.reports.telegram_commands.send_message") as mock_sm:
+             patch("src.reports.telegram_commands.send_shows_as_cards") as mock_cards:
 
             mock_gp.return_value = AsyncMock()
-            mock_cache.return_value = None  # нет кэша
+            # First call: no cache, second call after generate: has cache
+            mock_cache.side_effect = [None, {"content": "Дайджест"}]
             mock_dd.return_value = {"shows": [], "premieres": [], "stats": {}}
             mock_rn.return_value = []
             mock_bd.return_value = "Дайджест"

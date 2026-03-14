@@ -18,7 +18,9 @@ from src.reports.telegram_commands import (
     cmd_start, cmd_digest, cmd_today, cmd_weekend, cmd_week,
     cmd_premieres, cmd_theater, cmd_status, cmd_refresh,
     cmd_news, cmd_rss_refresh, cmd_favorites, cmd_watchlist, cmd_settings,
+    cmd_random,
     digest_callback, preference_callback, reply_keyboard_handler,
+    page_callback, metro_callback,
 )
 
 
@@ -67,19 +69,20 @@ async def scheduled_digest_generation():
         logger.error("Ошибка генерации дайджестов: {}", e)
 
 
-async def scheduled_notifications():
-    """Рассылка уведомлений об избранных театрах и вишлисте (09:00 МСК)."""
-    logger.info("=== Плановая рассылка уведомлений ===")
-    try:
-        pool = await get_pool()
-        stats = await notifications_job(pool)
-        logger.info("Уведомления: {}", stats)
-    except Exception as e:
-        logger.error("Ошибка рассылки уведомлений: {}", e)
-
-
 async def post_init(application):
     """Запуск планировщика после старта event loop."""
+    bot = application.bot
+
+    async def scheduled_notifications():
+        """Рассылка уведомлений с реальной отправкой через bot."""
+        logger.info("=== Плановая рассылка уведомлений ===")
+        try:
+            pool = await get_pool()
+            stats = await notifications_job(pool, bot=bot)
+            logger.info("Уведомления: {}", stats)
+        except Exception as e:
+            logger.error("Ошибка рассылки уведомлений: {}", e)
+
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
     scheduler.add_job(
         scheduled_collection,
@@ -146,8 +149,11 @@ def main():
     app.add_handler(CommandHandler("favorites", cmd_favorites))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("random", cmd_random))
     app.add_handler(CallbackQueryHandler(digest_callback, pattern="^digest_"))
     app.add_handler(CallbackQueryHandler(preference_callback, pattern="^(fav:|wl:|rm_fav:|rm_wl:|goto_)"))
+    app.add_handler(CallbackQueryHandler(page_callback, pattern="^(page:|show_all:|noop)"))
+    app.add_handler(CallbackQueryHandler(metro_callback, pattern="^metro_search$"))
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, reply_keyboard_handler
     ))

@@ -17,11 +17,12 @@ async def get_digest_data(pool, date_from: date, date_to: date, limit: int = 20)
         # Все показы за период
         shows = await conn.fetch(
             """
-            SELECT s.title, s.slug, s.age_rating, s.is_premiere,
-                   s.description,
-                   t.name AS theater_name, t.slug AS theater_slug,
-                   t.address, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max
+            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
+                   s.is_premiere, s.description,
+                   t.id AS theater_id, t.name AS theater_name,
+                   t.slug AS theater_slug, t.address, t.metro,
+                   sd.date, sd.time, sd.price_min, sd.price_max,
+                   sd.tickets_url
             FROM show_dates sd
             JOIN shows s ON s.id = sd.show_id
             JOIN theaters t ON t.id = s.theater_id

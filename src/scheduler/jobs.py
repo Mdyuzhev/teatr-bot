@@ -133,7 +133,7 @@ async def generate_digests_job(pool) -> dict:
     return stats
 
 
-async def notifications_job(pool) -> dict:
+async def notifications_job(pool, bot=None) -> dict:
     """
     Задача 09:00: уведомления для подписчиков.
 
@@ -162,34 +162,83 @@ async def notifications_job(pool) -> dict:
         # Уведомления: новые показы в избранных театрах
         for theater_id, dates in theater_dates.items():
             users = await get_favorite_users_for_theater(pool, theater_id)
+            theater_name = dates[0].get("theater_name", "")
+            titles = list({d["title"] for d in dates})
+            titles_str = ", ".join(titles[:3])
+            date_str = dates[0]["date"].strftime("%d.%m") if dates[0].get("date") else ""
+
             for user_id in users:
                 ref_id = dates[0]["show_date_id"]
                 if await is_notification_sent(pool, user_id, "new_at_favorite", ref_id):
                     stats["skipped"] += 1
                     continue
                 await log_notification(pool, user_id, "new_at_favorite", ref_id)
+                if bot:
+                    msg = (
+                        f"⭐ <b>{theater_name}</b>\n"
+                        f"Новые даты: <b>{titles_str}</b> — {date_str}\n"
+                        f"Используй /today чтобы увидеть полную афишу"
+                    )
+                    try:
+                        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
+                    except Exception as e:
+                        logger.warning("Не удалось отправить уведомление {}: {}", user_id, e)
+                        stats["errors"] += 1
+                        continue
                 stats["sent"] += 1
 
         # Уведомления: новые даты для спектаклей в вишлисте
         for show_id, dates in show_dates_map.items():
             users = await get_watchlist_users_for_show(pool, show_id)
+            show_title = dates[0].get("title", "")
+            theater_name = dates[0].get("theater_name", "")
+            date_str = dates[0]["date"].strftime("%d.%m") if dates[0].get("date") else ""
+
             for user_id in users:
                 ref_id = dates[0]["show_date_id"]
                 if await is_notification_sent(pool, user_id, "new_date", ref_id):
                     stats["skipped"] += 1
                     continue
                 await log_notification(pool, user_id, "new_date", ref_id)
+                if bot:
+                    msg = (
+                        f"🔖 Появилась новая дата!\n"
+                        f"<b>{show_title}</b> · {theater_name}\n"
+                        f"📅 {date_str}"
+                    )
+                    try:
+                        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
+                    except Exception as e:
+                        logger.warning("Не удалось отправить уведомление {}: {}", user_id, e)
+                        stats["errors"] += 1
+                        continue
                 stats["sent"] += 1
 
         # 2. Последний шанс — ровно 2 даты осталось
         last_chance = await get_last_chance_shows(pool)
         for show in last_chance:
             users = await get_watchlist_users_for_show(pool, show["show_id"])
+            show_title = show.get("title", "")
+            theater_name = show.get("theater_name", "")
+
             for user_id in users:
                 if await is_notification_sent(pool, user_id, "last_chance", show["show_id"]):
                     stats["skipped"] += 1
                     continue
                 await log_notification(pool, user_id, "last_chance", show["show_id"])
+                if bot:
+                    msg = (
+                        f"⚠️ <b>Последний шанс!</b>\n"
+                        f"<b>{show_title}</b> · {theater_name}\n"
+                        f"Осталось всего 2 показа в сезоне.\n"
+                        f"Успей купить билет!"
+                    )
+                    try:
+                        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
+                    except Exception as e:
+                        logger.warning("Не удалось отправить уведомление {}: {}", user_id, e)
+                        stats["errors"] += 1
+                        continue
                 stats["sent"] += 1
 
     except Exception as e:
