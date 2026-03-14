@@ -10,6 +10,7 @@ from src.config import config
 from src.db.connection import get_pool
 from src.collectors.kudago import KudaGoCollector
 from src.collectors.rss_feeds import RssCollector
+from src.scheduler.jobs import generate_digests_job
 from src.reports.telegram_commands import (
     cmd_start, cmd_digest, cmd_today, cmd_weekend, cmd_week,
     cmd_premieres, cmd_theater, cmd_status, cmd_refresh,
@@ -52,6 +53,17 @@ async def scheduled_rss_collection():
         logger.error("Ошибка сбора RSS: {}", e)
 
 
+async def scheduled_digest_generation():
+    """Генерация стандартных дайджестов (запускается планировщиком)."""
+    logger.info("=== Плановая генерация дайджестов ===")
+    try:
+        pool = await get_pool()
+        stats = await generate_digests_job(pool)
+        logger.info("Генерация дайджестов завершена: {}", stats)
+    except Exception as e:
+        logger.error("Ошибка генерации дайджестов: {}", e)
+
+
 async def post_init(application):
     """Запуск планировщика после старта event loop."""
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
@@ -69,8 +81,18 @@ async def post_init(application):
         minute=30,
         id="rss_daily",
     )
+    scheduler.add_job(
+        scheduled_digest_generation,
+        "cron",
+        hour=config.COLLECTION_HOUR + 1,
+        minute=0,
+        id="digest_daily",
+    )
     scheduler.start()
-    logger.info("Планировщик: KudaGo {:02d}:00, RSS {:02d}:30 МСК", config.COLLECTION_HOUR, config.COLLECTION_HOUR)
+    logger.info(
+        "Планировщик: KudaGo {:02d}:00, RSS {:02d}:30, дайджесты {:02d}:00 МСК",
+        config.COLLECTION_HOUR, config.COLLECTION_HOUR, config.COLLECTION_HOUR + 1,
+    )
 
 
 def main():
