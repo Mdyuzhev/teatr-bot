@@ -4,17 +4,13 @@
 - `/logs errors` — только ошибки
 - `/logs pg` — логи PostgreSQL
 
+Через нативные MCP-инструменты:
+
 ### По умолчанию
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "tail -50 /home/flomaster/teatr-bot/logs/stdout.log"}'
-```
+`mcp__homelab__run_shell_command` — `tail -50 /home/flomaster/teatr-bot/logs/bot.log 2>/dev/null || tail -50 /home/flomaster/teatr-bot/logs/stdout.log 2>/dev/null`
 
 ### errors
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "grep -i \"error\\|warning\\|traceback\" /home/flomaster/teatr-bot/logs/stdout.log | tail -30"}'
-```
+`mcp__homelab__run_shell_command` — `grep -i "error\|warning\|traceback" /home/flomaster/teatr-bot/logs/bot.log 2>/dev/null | tail -30`
 
 ### pg
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "docker logs teatr-postgres --tail=30 2>&1"}'
-```
+`mcp__homelab__get_service_logs` (service: teatr-postgres, lines: 30)

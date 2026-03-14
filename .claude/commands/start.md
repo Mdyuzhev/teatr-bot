@@ -16,21 +16,16 @@ git status
 git log --oneline -10
 ```
 
-## Шаг 4: Состояние сервера (через MCP)
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "pgrep -f src.main && echo BOT:running || echo BOT:stopped"}'
-python scripts/mcp_call.py run_shell_command '{"command": "docker ps --filter name=teatr-postgres --format \"{{.Names}} {{.Status}}\""}'
-```
+## Шаг 4: Состояние сервера
+Через нативные MCP-инструменты:
+1. `mcp__homelab__run_shell_command` — `pgrep -fa "src.main" || echo "BOT:stopped"`
+2. `mcp__homelab__run_shell_command` — `docker ps --filter name=teatr-postgres --format "{{.Names}} {{.Status}}"`
 
 ## Шаг 5: Логи бота
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "tail -30 /home/flomaster/teatr-bot/logs/stdout.log 2>/dev/null"}'
-```
+`mcp__homelab__run_shell_command` — `tail -30 /home/flomaster/teatr-bot/logs/bot.log 2>/dev/null || tail -30 /home/flomaster/teatr-bot/logs/stdout.log 2>/dev/null || echo "Логи не найдены"`
 
 ## Шаг 6: БД
-```bash
-python scripts/mcp_call.py exec_in_container '{"container": "teatr-postgres", "command": "psql -U teatr_user -d teatr_bot -c \"SELECT (SELECT count(*) FROM theaters) as theaters, (SELECT count(*) FROM shows) as shows, (SELECT count(*) FROM show_dates WHERE date >= CURRENT_DATE) as upcoming;\""}'
-```
+`mcp__homelab__exec_in_container` (teatr-postgres) — `psql -U teatr_user -d teatr_bot -c "SELECT (SELECT count(*) FROM theaters) as theaters, (SELECT count(*) FROM shows) as shows, (SELECT count(*) FROM show_dates WHERE date >= CURRENT_DATE) as upcoming;"`
 
 ## Итоговый отчёт
 ```

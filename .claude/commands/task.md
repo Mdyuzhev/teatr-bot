@@ -18,16 +18,14 @@ ls Tasks/backlog/ | grep .md
 2. Выведи план
 3. Выполняй по шагам
 4. После каждого шага — тесты через MCP:
-   ```bash
-   python scripts/mcp_call.py run_shell_command '{"command": "cd /home/flomaster/teatr-bot && python3 -m pytest tests/ -v --tb=short 2>&1 | tail -30"}'
-   ```
+   `mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && . venv/bin/activate && python -m pytest tests/ -v --tb=short 2>&1 | tail -30`
 5. По завершении:
    - Обнови статус задачи на DONE
    - Залей код на сервер через MCP
    - Перезапусти бота
 
 ## Правила
-- Сервер — через MCP, не SSH
+- Сервер — через нативные MCP-инструменты (mcp__homelab__*), НЕ через mcp_call.py
 - Claude API вызывать только из brain/digest_builder.py
 - Комментарии — на русском
 - Тесты с ошибками — фиксировать, не скрывать

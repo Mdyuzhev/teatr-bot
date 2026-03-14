@@ -1,18 +1,14 @@
 Перезапустить бота на сервере.
 
+Через нативные MCP-инструменты:
+
 1. Остановить:
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "pgrep -f src.main | xargs kill 2>/dev/null; sleep 2; echo stopped"}'
-```
+`mcp__homelab__run_shell_command` — `pgrep -f "src.main" | xargs kill 2>/dev/null; sleep 2; echo stopped`
 
 2. Запустить:
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "cd /home/flomaster/teatr-bot && nohup python3 -m src.main > logs/stdout.log 2>&1 & echo PID=$!"}'
-```
+`mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && . venv/bin/activate && nohup python -m src.main > logs/bot.log 2>&1 & echo PID=$!`
 
-3. Проверить (через 5 сек):
-```bash
-python scripts/mcp_call.py run_shell_command '{"command": "tail -10 /home/flomaster/teatr-bot/logs/stdout.log"}'
-```
+3. Проверить (через 3 сек):
+`mcp__homelab__run_shell_command` — `sleep 3 && tail -15 /home/flomaster/teatr-bot/logs/bot.log`
 
 Убедиться: нет traceback, pool создан, планировщик запущен.
