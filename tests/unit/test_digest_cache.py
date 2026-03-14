@@ -2,6 +2,7 @@
 Тесты для src/db/queries/digests.py.
 Проверяем кэш-логику дайджестов с моками asyncpg.
 """
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,11 +12,15 @@ from src.db.queries.digests import get_fresh_digest, save_digest, get_all_digest
 
 
 def _make_pool():
-    """Создать мок asyncpg pool."""
-    pool = AsyncMock()
+    """Создать мок asyncpg pool с корректным async context manager."""
     conn = AsyncMock()
-    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
-    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    pool = MagicMock()
+
+    @asynccontextmanager
+    async def fake_acquire():
+        yield conn
+
+    pool.acquire = fake_acquire
     return pool, conn
 
 
