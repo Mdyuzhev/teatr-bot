@@ -439,10 +439,87 @@ async def preference_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("Спектакль удалён из списка.")
 
     elif data == "goto_favorites":
-        await query.edit_message_text("Используйте /favorites")
+        await _show_favorites_inline(query, pool, user_id)
 
     elif data == "goto_watchlist":
-        await query.edit_message_text("Используйте /watchlist")
+        await _show_watchlist_inline(query, pool, user_id)
+
+    elif data == "goto_settings":
+        favs = await get_user_favorites(pool, user_id)
+        wl = await get_user_watchlist(pool, user_id)
+        keyboard = [
+            [InlineKeyboardButton(f"⭐ Мои избранные театры ({len(favs)})", callback_data="goto_favorites")],
+            [InlineKeyboardButton(f"🔖 Моё интересное ({len(wl)})", callback_data="goto_watchlist")],
+        ]
+        await query.edit_message_text(
+            "⚙️ <b>Настройки</b>", parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+
+async def _show_favorites_inline(query, pool, user_id: int) -> None:
+    """Показать избранные театры прямо в callback (вместо редиректа на /favorites)."""
+    favs = await get_user_favorites(pool, user_id)
+    if not favs:
+        await query.edit_message_text(
+            "У вас пока нет избранных театров.\n"
+            "Нажмите ⭐ в карточке спектакля, чтобы добавить театр.",
+            parse_mode="HTML",
+        )
+        return
+
+    lines = [f"⭐ <b>Ваши избранные театры ({len(favs)})</b>\n"]
+    keyboard = []
+    for f in favs:
+        shows_text = f"{f['upcoming_shows']} показов" if f["upcoming_shows"] else "нет ближайших дат"
+        metro = f" · {f['metro']}" if f.get("metro") else ""
+        lines.append(f"🏛 <b>{f['name']}</b>{metro}\n   {shows_text}")
+        keyboard.append([InlineKeyboardButton(
+            f"❌ {f['name']}", callback_data=f"rm_fav:{f['id']}"
+        )])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="goto_settings")])
+    await query.edit_message_text(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def _show_watchlist_inline(query, pool, user_id: int) -> None:
+    """Показать вишлист прямо в callback (вместо редиректа на /watchlist)."""
+    items = await get_user_watchlist(pool, user_id)
+    if not items:
+        await query.edit_message_text(
+            "Ваш список интересного пуст.\n"
+            "Нажмите 🔖 в карточке спектакля, чтобы добавить.",
+            parse_mode="HTML",
+        )
+        return
+
+    lines = [f"🔖 <b>Ваш список интересного ({len(items)})</b>\n"]
+    keyboard = []
+    for item in items:
+        warning = "⚠️ " if item["last_chance"] else ""
+        if item.get("next_date"):
+            date_str = item["next_date"].strftime("%d.%m")
+            time_str = f", {item['next_time'].strftime('%H:%M')}" if item.get("next_time") else ""
+            date_info = f"Ближайший: {date_str}{time_str}"
+        elif item["remaining_dates"] == 0:
+            date_info = "Дат нет — следим"
+        else:
+            date_info = f"{item['remaining_dates']} дат"
+
+        lines.append(
+            f"🎭 <b>{item['title']}</b> · {item['theater_name']}\n"
+            f"   {warning}{date_info}"
+        )
+        keyboard.append([InlineKeyboardButton(
+            f"❌ {item['title']}", callback_data=f"rm_wl:{item['id']}"
+        )])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="goto_settings")])
+    await query.edit_message_text(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 
 async def _update_card_button(query, old_data: str, new_text: str) -> None:
