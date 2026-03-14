@@ -12,8 +12,8 @@ def kudago_event_fixture() -> dict:
         "title": "Вишнёвый сад",
         "slug": "vishnyovyi-sad-mkhat",
         "body_text": "Классический спектакль МХТ по Чехову.",
-        "tags": [{"slug": "spektakl"}, {"slug": "drama"}],
-        "age_restriction": 12,
+        "tags": ["спектакли", "драма"],
+        "age_restriction": "12+",
         "price": "1000-5000 руб",
         "place": {
             "id": 789,
@@ -40,8 +40,8 @@ def kudago_premiere_fixture() -> dict:
         "title": "Новый спектакль — Премьера",
         "slug": "novyi-spektakl-premiera",
         "body_text": "Долгожданная премьера сезона.",
-        "tags": [{"slug": "premera"}, {"slug": "drama"}],
-        "age_restriction": 16,
+        "tags": ["премьеры", "драма"],
+        "age_restriction": "16+",
         "price": "от 2000 руб",
         "place": {
             "id": 100,

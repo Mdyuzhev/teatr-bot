@@ -46,6 +46,7 @@ class TestParsePrice:
     @pytest.mark.parametrize("price_str,expected_min,expected_max", [
         ("1000-5000 руб", 1000, 5000),
         ("500 — 3500 руб", 500, 3500),
+        ("от 5600 до 6900 рублей", 5600, 6900),
         ("от 500 руб", 500, None),
         ("бесплатно", 0, 0),
         ("", None, None),

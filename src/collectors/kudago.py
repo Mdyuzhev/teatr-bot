@@ -147,14 +147,21 @@ class KudaGoCollector:
         }
 
     def _parse_show(self, event: dict) -> dict:
-        tags = [t.get("slug", "") for t in event.get("tags", [])]
-        is_premiere = "premera" in tags or "премьера" in [t.get("slug", "") for t in event.get("tags", [])]
+        raw_tags = event.get("tags", [])
+        # KudaGo возвращает tags как массив строк, не объектов
+        tags = []
+        for t in raw_tags:
+            if isinstance(t, dict):
+                tags.append(t.get("slug", ""))
+            else:
+                tags.append(str(t).lower())
+        is_premiere = "premera" in tags or "премьера" in tags or "премьеры" in tags
 
         age = event.get("age_restriction")
-        if age is not None and isinstance(age, (int, float)) and age > 0:
+        if isinstance(age, str) and age:
+            age_rating = age if "+" in age else f"{age}+"
+        elif isinstance(age, (int, float)) and age > 0:
             age_rating = f"{int(age)}+"
-        elif isinstance(age, str) and age:
-            age_rating = age
         else:
             age_rating = None
 
@@ -205,6 +212,13 @@ class KudaGoCollector:
 
         if "бесплатно" in price_str:
             return 0, 0
+
+        # "от 5600 до 6900 рублей"
+        m = re.search(r"от\s+(\d[\d\s]*)\s+до\s+(\d[\d\s]*)", price_str)
+        if m:
+            p_min = int(m.group(1).replace(" ", ""))
+            p_max = int(m.group(2).replace(" ", ""))
+            return p_min, p_max
 
         # "500-3500 руб" или "500 — 3500"
         m = re.search(r"(\d[\d\s]*)\s*[-–—]\s*(\d[\d\s]*)", price_str)
