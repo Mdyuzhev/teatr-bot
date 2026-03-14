@@ -117,17 +117,16 @@ class TestCmdTheater:
     """Тесты команды /theater."""
 
     @pytest.mark.asyncio
-    async def test_no_args_shows_help(self, mock_update, mock_context):
-        """Без аргументов → подсказка."""
+    async def test_no_args_shows_theaters_list(self, mock_update, mock_context):
+        """Без аргументов → пагинированный список театров."""
         from src.reports.telegram_commands import cmd_theater
 
         mock_context.args = []
 
-        with patch("src.reports.telegram_commands.send_message") as mock_sm:
+        with patch("src.reports.telegram_commands._cmd_theaters_list") as mock_list:
+            mock_list.return_value = None
             await cmd_theater(mock_update, mock_context)
-            mock_sm.assert_awaited_once()
-            call_text = mock_sm.call_args[0][2]
-            assert "Укажите название" in call_text
+            mock_list.assert_awaited_once_with(mock_update, mock_context)
 
     @pytest.mark.asyncio
     async def test_theater_not_found(self, mock_update, mock_context):

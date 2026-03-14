@@ -25,6 +25,27 @@ async def get_all_theaters(pool) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def search_theaters_by_name(pool, query: str) -> list[dict]:
+    """Поиск театров по подстроке в названии. Возвращает с upcoming_shows."""
+    today = date.today()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT t.id, t.name, t.slug, t.address, t.metro, t.url,
+                   COUNT(sd.id) AS upcoming_shows
+            FROM theaters t
+            LEFT JOIN shows s ON s.theater_id = t.id
+            LEFT JOIN show_dates sd ON sd.show_id = s.id
+                AND sd.date >= $1 AND sd.is_cancelled = FALSE
+            WHERE LOWER(t.name) LIKE $2
+            GROUP BY t.id
+            ORDER BY upcoming_shows DESC, t.name
+            """,
+            today, f"%{query.lower()}%",
+        )
+    return [dict(r) for r in rows]
+
+
 async def get_theater_by_slug(pool, slug: str) -> dict | None:
     """Найти театр по slug."""
     async with pool.acquire() as conn:

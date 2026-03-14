@@ -7,6 +7,7 @@ from loguru import logger
 
 TELEGRAM_MSG_LIMIT = 4096
 PAGE_SIZE = 5
+THEATERS_PAGE_SIZE = 10
 
 
 async def send_message(bot: Bot, chat_id: str | int, text: str,
@@ -184,3 +185,76 @@ async def send_shows_as_cards(
             text=f"Страница {page + 1} из {total_pages}",
             reply_markup=InlineKeyboardMarkup(nav_rows),
         )
+
+
+def build_theaters_page_content(
+    theaters: list[dict],
+    fav_ids: set[int],
+    page: int = 0,
+    page_size: int = THEATERS_PAGE_SIZE,
+    title: str = "🏛 Театры",
+    search_query: str | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Собирает текст и клавиатуру для страницы списка театров."""
+    total_pages = max(1, (len(theaters) + page_size - 1) // page_size)
+    page = min(page, total_pages - 1)
+    start = page * page_size
+    page_theaters = theaters[start:start + page_size]
+
+    lines = [f"<b>{title}</b>  (стр. {page + 1}/{total_pages})\n"]
+    keyboard = []
+
+    for i, t in enumerate(page_theaters, start + 1):
+        count = t.get("upcoming_shows", 0)
+        metro = f" · {t['metro']}" if t.get("metro") else ""
+        lines.append(f"{i}. {t['name']}{metro} — {count} показов")
+
+        fav_text = "✅" if t["id"] in fav_ids else "⭐"
+        row = [
+            InlineKeyboardButton(f"🎭 {t['name'][:25]}", callback_data=f"theater_shows:{t['slug']}"),
+            InlineKeyboardButton(fav_text, callback_data=f"fav:theater:{t['id']}"),
+        ]
+        keyboard.append(row)
+
+    # Навигация
+    nav = []
+    cb_prefix = f"theaters_search_page:{search_query}:" if search_query else "theaters_page:"
+    if page > 0:
+        nav.append(InlineKeyboardButton("←", callback_data=f"{cb_prefix}{page - 1}"))
+    nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("→", callback_data=f"{cb_prefix}{page + 1}"))
+    if len(nav) > 1 or total_pages > 1:
+        keyboard.append(nav)
+
+    # Нижние кнопки
+    bottom = []
+    if not search_query:
+        bottom.append(InlineKeyboardButton("🔍 Найти театр", callback_data="theater_search_input"))
+        bottom.append(InlineKeyboardButton("🚇 По метро", callback_data="metro_search"))
+    keyboard.append(bottom) if bottom else None
+
+    text = "\n".join(lines)
+    markup = InlineKeyboardMarkup(keyboard)
+    return text, markup
+
+
+async def send_theaters_page(
+    bot: Bot,
+    chat_id: int | str,
+    theaters: list[dict],
+    fav_ids: set[int],
+    page: int = 0,
+    page_size: int = THEATERS_PAGE_SIZE,
+    title: str = "🏛 Театры",
+    search_query: str | None = None,
+) -> None:
+    """Отправить страницу списка театров."""
+    if not theaters:
+        await send_message(bot, chat_id, "Театров не найдено.")
+        return
+
+    text, markup = build_theaters_page_content(
+        theaters, fav_ids, page, page_size, title, search_query,
+    )
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=markup)

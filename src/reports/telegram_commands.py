@@ -32,7 +32,9 @@ from src.db.queries.preferences import (
 )
 from src.brain.digest_builder import build_digest
 from src.scheduler.jobs import get_period_dates, PERIOD_LABELS, DIGEST_MODEL
-from src.reports.telegram_sender import send_message, send_shows_as_cards
+from src.reports.telegram_sender import (
+    send_message, send_shows_as_cards, send_theaters_page, build_theaters_page_content,
+)
 from src.collectors.kudago import KudaGoCollector
 from src.collectors.rss_feeds import RssCollector
 from src.config import config
@@ -168,50 +170,45 @@ async def cmd_premieres(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def cmd_theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
-        await send_message(context.bot, update.effective_chat.id,
-                           "Укажите название театра: /theater большой")
+        # Без аргументов — показать пагинированный список
+        await _cmd_theaters_list(update, context)
         return
 
-    search = " ".join(context.args).lower()
+    search = " ".join(context.args)
+    from src.db.queries.theaters import search_theaters_by_name
     pool = await get_pool()
+    user_id = update.effective_user.id
+    theaters = await search_theaters_by_name(pool, search)
 
-    # Поиск театра по подстроке
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT slug, name FROM theaters WHERE LOWER(name) LIKE $1 LIMIT 5",
-            f"%{search}%",
-        )
-
-    if not rows:
+    if not theaters:
         await send_message(context.bot, update.effective_chat.id,
                            f"Театр «{search}» не найден.")
         return
 
-    if len(rows) == 1:
-        slug = rows[0]["slug"]
-        name = rows[0]["name"]
+    if len(theaters) == 1:
+        # Единственный результат — сразу афиша карточками
+        t = theaters[0]
+        today = date.today()
+        shows = await get_shows_by_theater(pool, t["slug"], today, today + timedelta(days=14))
+        if not shows:
+            await send_message(context.bot, update.effective_chat.id,
+                               f"У «{t['name']}» нет показов в ближайшие 2 недели.")
+            return
+        for s in shows:
+            s["theater_name"] = t["name"]
+            s["theater_id"] = t["id"]
+        await send_shows_as_cards(context.bot, update.effective_chat.id, shows,
+                                   f"🏛 <b>{t['name']}</b>",
+                                   pool=pool, user_id=user_id)
     else:
-        # Несколько вариантов — показать список
-        lines = ["Найдено несколько театров:"]
-        for r in rows:
-            lines.append(f"  /theater_{r['slug']}")
-        await send_message(context.bot, update.effective_chat.id, "\n".join(lines))
-        return
-
-    today = date.today()
-    date_to = today + timedelta(days=14)
-    shows = await get_shows_by_theater(pool, slug, today, date_to)
-    if not shows:
-        await send_message(context.bot, update.effective_chat.id,
-                           f"У «{name}» нет показов в ближайшие 2 недели.")
-        return
-
-    # Добавляем theater_name для форматирования
-    for s in shows:
-        s["theater_name"] = name
-
-    text = await build_digest(shows, f"{name} (2 недели)")
-    await send_message(context.bot, update.effective_chat.id, text)
+        # Несколько — страница результатов поиска с кнопками
+        favs = await get_user_favorites(pool, user_id)
+        fav_ids = {f["id"] for f in favs}
+        await send_theaters_page(
+            context.bot, update.effective_chat.id,
+            theaters, fav_ids, page=0,
+            title=f"🔍 Поиск: {search}", search_query=search,
+        )
 
 
 # ── /status ──
@@ -560,64 +557,25 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif context.user_data.get("awaiting") == "metro_input":
         context.user_data.pop("awaiting", None)
         await _search_theaters_by_metro(update, context, text)
+    elif context.user_data.get("awaiting") == "theater_search":
+        context.user_data.pop("awaiting", None)
+        await _search_theaters_inline(update, context, text)
     else:
         # Свободный текстовый поиск
         await _search_shows(update, context, query_text=text)
 
 
 async def _cmd_theaters_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Список театров: избранные, популярные, поиск по метро."""
+    """Список театров постранично с кнопками ⭐ и навигацией."""
     from src.db.queries.theaters import get_all_theaters
     pool = await get_pool()
     theaters = await get_all_theaters(pool)
     user_id = update.effective_user.id
 
-    if not theaters:
-        await send_message(context.bot, update.effective_chat.id, "Театров пока нет в базе.")
-        return
-
-    # Разделяем на избранные и остальные
     favs = await get_user_favorites(pool, user_id)
     fav_ids = {f["id"] for f in favs}
 
-    lines = ["<b>Театры</b>\n"]
-
-    # Избранные
-    fav_theaters = [t for t in theaters if t["id"] in fav_ids]
-    if fav_theaters:
-        lines.append("⭐ <b>Мои избранные</b>")
-        for t in fav_theaters:
-            count = t.get("upcoming_shows", 0)
-            metro = f" · {t['metro']}" if t.get("metro") else ""
-            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
-        lines.append("")
-
-    # Популярные (топ-6 по количеству показов, исключая избранные)
-    popular = [t for t in theaters if t["id"] not in fav_ids and t.get("upcoming_shows", 0) > 0][:6]
-    if popular:
-        lines.append("🔥 <b>Популярные</b>")
-        for t in popular:
-            count = t.get("upcoming_shows", 0)
-            metro = f" · {t['metro']}" if t.get("metro") else ""
-            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
-        lines.append("")
-
-    # Все остальные
-    remaining = [t for t in theaters if t["id"] not in fav_ids and t not in popular]
-    if remaining:
-        lines.append(f"📍 <b>Все остальные</b> ({len(remaining)})")
-        for t in remaining[:10]:
-            count = t.get("upcoming_shows", 0)
-            metro = f" · {t['metro']}" if t.get("metro") else ""
-            lines.append(f"  🏛 {t['name']}{metro} — {count} показов")
-        if len(remaining) > 10:
-            lines.append(f"  ...и ещё {len(remaining) - 10}")
-
-    keyboard = [[InlineKeyboardButton("🚇 Найти по метро", callback_data="metro_search")]]
-    await update.message.reply_text(
-        "\n".join(lines), parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
+    await send_theaters_page(context.bot, update.effective_chat.id, theaters, fav_ids, page=0)
 
 
 # ── Callback: поиск по метро ──
@@ -652,6 +610,91 @@ async def _search_theaters_by_metro(update: Update, context: ContextTypes.DEFAUL
         count = t.get("upcoming_shows", 0)
         lines.append(f"🏛 <b>{t['name']}</b> — {count} показов")
     await send_message(context.bot, update.effective_chat.id, "\n".join(lines))
+
+
+# ── Поиск театров по тексту (inline) ──
+
+async def _search_theaters_inline(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                   query_text: str) -> None:
+    """Поиск театров по названию — результат постранично с кнопками ⭐."""
+    from src.db.queries.theaters import search_theaters_by_name
+    pool = await get_pool()
+    user_id = update.effective_user.id
+    theaters = await search_theaters_by_name(pool, query_text)
+
+    if not theaters:
+        await send_message(context.bot, update.effective_chat.id,
+                           f"Театров по запросу «{query_text}» не найдено.")
+        return
+
+    favs = await get_user_favorites(pool, user_id)
+    fav_ids = {f["id"] for f in favs}
+
+    await send_theaters_page(
+        context.bot, update.effective_chat.id,
+        theaters, fav_ids, page=0,
+        title=f"🔍 Поиск: {query_text}",
+        search_query=query_text,
+    )
+
+
+# ── Callback: театры (пагинация, показ афиши, поиск) ──
+
+async def theaters_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка callback-кнопок списка театров."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user_id = update.effective_user.id
+    pool = await get_pool()
+
+    if data.startswith("theaters_page:"):
+        page = int(data.split(":")[1])
+        from src.db.queries.theaters import get_all_theaters
+        theaters = await get_all_theaters(pool)
+        favs = await get_user_favorites(pool, user_id)
+        fav_ids = {f["id"] for f in favs}
+        text, markup = build_theaters_page_content(theaters, fav_ids, page)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
+
+    elif data.startswith("theaters_search_page:"):
+        parts = data.split(":", 2)
+        search_q = parts[1]
+        page = int(parts[2])
+        from src.db.queries.theaters import search_theaters_by_name
+        theaters = await search_theaters_by_name(pool, search_q)
+        favs = await get_user_favorites(pool, user_id)
+        fav_ids = {f["id"] for f in favs}
+        text, markup = build_theaters_page_content(
+            theaters, fav_ids, page, title=f"🔍 Поиск: {search_q}", search_query=search_q,
+        )
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
+
+    elif data.startswith("theater_shows:"):
+        slug = data.split(":", 1)[1]
+        from src.db.queries.theaters import get_theater_by_slug
+        theater = await get_theater_by_slug(pool, slug)
+        if not theater:
+            await query.answer("Театр не найден", show_alert=True)
+            return
+        today = date.today()
+        date_to = today + timedelta(days=14)
+        shows = await get_shows_by_theater(pool, slug, today, date_to)
+        if not shows:
+            await query.answer(f"У «{theater['name']}» нет показов", show_alert=True)
+            return
+        for s in shows:
+            s["theater_name"] = theater["name"]
+            s["theater_id"] = theater["id"]
+        await send_shows_as_cards(
+            context.bot, query.message.chat_id, shows,
+            f"🏛 <b>{theater['name']}</b>",
+            pool=pool, user_id=user_id,
+        )
+
+    elif data == "theater_search_input":
+        context.user_data["awaiting"] = "theater_search"
+        await query.edit_message_text("🔍 Введите название театра (или часть названия):")
 
 
 # ── Callback: навигация по страницам ──
