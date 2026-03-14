@@ -36,7 +36,7 @@ async def get_show_for_review(pool, show_id: int) -> dict | None:
         row = await conn.fetchrow(
             """
             SELECT s.id, s.title, s.slug, s.genre, s.age_rating,
-                   s.description, s.is_premiere,
+                   s.description, s.is_premiere, s.image_url,
                    t.name AS theater_name, t.url AS theater_url
             FROM shows s
             JOIN theaters t ON t.id = s.theater_id

@@ -157,17 +157,23 @@ async def send_shows_as_cards(
 
     # Карточки
     for s in page_shows:
-        text = format_show_card(s)
+        card_text = format_show_card(s)
+        image_url = s.get("image_url")
         tid = s.get("theater_id")
         sid = s.get("show_id") or s.get("id")
         key = f"{tid}:{sid}"
         fav, wl = has_prefs.get(key, (False, False))
         markup = build_show_card_keyboard(s, has_fav=fav, has_wl=wl)
         try:
-            await bot.send_message(chat_id=chat_id, text=text,
+            if image_url:
+                try:
+                    await bot.send_photo(chat_id=chat_id, photo=image_url)
+                except Exception as photo_err:
+                    logger.warning("Не удалось загрузить фото для show {}: {}", sid, photo_err)
+            await bot.send_message(chat_id=chat_id, text=card_text,
                                    parse_mode="HTML", reply_markup=markup)
         except Exception as e:
-            logger.error("Ошибка отправки карточки: {}", e)
+            logger.error("Ошибка отправки карточки show {}: {}", sid, e)
 
     # Навигация
     if total_pages > 1:

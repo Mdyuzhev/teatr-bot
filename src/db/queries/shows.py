@@ -12,6 +12,7 @@ async def get_shows_by_period(pool, date_from: date, date_to: date) -> list[dict
             """
             SELECT s.id AS show_id, s.title, s.slug, s.genre,
                    s.age_rating, s.is_premiere, s.description,
+                   s.image_url,
                    t.id AS theater_id, t.name AS theater_name,
                    t.slug AS theater_slug, t.address, t.metro,
                    sd.date, sd.time, sd.price_min, sd.price_max,
@@ -34,7 +35,7 @@ async def get_shows_by_theater(pool, theater_slug: str, date_from: date, date_to
         rows = await conn.fetch(
             """
             SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
-                   s.is_premiere, s.description,
+                   s.is_premiere, s.description, s.image_url,
                    t.id AS theater_id, t.name AS theater_name,
                    sd.date, sd.time, sd.price_min, sd.price_max,
                    sd.tickets_url
@@ -60,7 +61,7 @@ async def get_premieres(pool, days: int = 30) -> list[dict]:
         rows = await conn.fetch(
             """
             SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
-                   s.description,
+                   s.description, s.image_url,
                    t.id AS theater_id, t.name AS theater_name,
                    t.slug AS theater_slug, t.metro,
                    sd.date, sd.time, sd.price_min, sd.price_max,

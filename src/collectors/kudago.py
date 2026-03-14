@@ -49,7 +49,7 @@ class KudaGoCollector:
                 "offset": offset,
                 "actual_since": since,
                 "actual_until": until,
-                "fields": "id,title,slug,body_text,tags,age_restriction,price,place,dates",
+                "fields": "id,title,slug,body_text,tags,age_restriction,price,place,dates,images",
             }
             data = self._request_with_retry(params)
             if data is None:
@@ -103,16 +103,19 @@ class KudaGoCollector:
                     # Upsert show
                     show_id = await conn.fetchval(
                         """
-                        INSERT INTO shows (theater_id, title, slug, age_rating, description, is_premiere, source)
-                        VALUES ($1, $2, $3, $4, $5, $6, 'kudago')
+                        INSERT INTO shows (theater_id, title, slug, age_rating, description,
+                                           is_premiere, image_url, source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'kudago')
                         ON CONFLICT (slug) DO UPDATE SET
                             title = EXCLUDED.title,
                             description = EXCLUDED.description,
-                            is_premiere = EXCLUDED.is_premiere
+                            is_premiere = EXCLUDED.is_premiere,
+                            image_url = COALESCE(EXCLUDED.image_url, shows.image_url)
                         RETURNING id
                         """,
                         theater_id, show["title"], show["slug"],
                         show["age_rating"], show["description"], show["is_premiere"],
+                        show.get("image_url"),
                     )
                     stats["shows"] += 1
 
@@ -165,12 +168,26 @@ class KudaGoCollector:
         else:
             age_rating = None
 
+        # Парсим первое изображение
+        image_url = None
+        images = event.get("images", [])
+        if images and isinstance(images, list):
+            first = images[0]
+            if isinstance(first, dict):
+                thumbnails = first.get("thumbnail", {})
+                image_url = (
+                    thumbnails.get("640x384")
+                    or thumbnails.get("144x96")
+                    or first.get("image")
+                )
+
         return {
             "title": event.get("title", ""),
             "slug": event.get("slug", ""),
             "description": (event.get("body_text") or "")[:2000],
             "age_rating": age_rating,
             "is_premiere": is_premiere,
+            "image_url": image_url,
         }
 
     def _parse_dates(self, event: dict) -> list[dict]:
