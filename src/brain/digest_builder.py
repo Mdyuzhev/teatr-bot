@@ -11,6 +11,7 @@
 from datetime import date
 
 import anthropic
+import httpx
 from loguru import logger
 
 from src.config import config
@@ -49,7 +50,13 @@ async def build_digest(shows: list[dict], period_label: str,
 async def _call_claude(raw_text: str, period_label: str,
                        rss_context: str = "") -> str:
     """Вызов Claude API для генерации дайджеста."""
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    http_client = None
+    if config.ANTHROPIC_PROXY:
+        http_client = httpx.Client(proxy=config.ANTHROPIC_PROXY)
+    client = anthropic.Anthropic(
+        api_key=config.ANTHROPIC_API_KEY,
+        http_client=http_client,
+    )
 
     rss_block = ""
     if rss_context:

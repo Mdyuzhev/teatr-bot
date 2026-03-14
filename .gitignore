@@ -25,5 +25,8 @@ logs/*.log.*
 .DS_Store
 Thumbs.db
 
+# Прокси-лаунчер
+start-claude.bat
+
 # Чекпоинты агента (временные)
 .claude/tasks/CHECKPOINT_*.md

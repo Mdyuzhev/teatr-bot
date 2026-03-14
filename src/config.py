@@ -24,6 +24,7 @@ class Config:
 
     # Anthropic (только для digest_builder.py)
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    ANTHROPIC_PROXY: str = os.getenv("ANTHROPIC_PROXY", "")
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
