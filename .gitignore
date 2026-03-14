@@ -1,0 +1,29 @@
+# Окружение
+.env
+*.env.local
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Логи
+logs/*.log
+logs/*.log.*
+
+# БД дампы
+*.sql.gz
+*.dump
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Чекпоинты агента (временные)
+.claude/tasks/CHECKPOINT_*.md

@@ -1,0 +1,79 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Agent(*)",
+      "NotebookEdit(*)",
+      "mcp__homelab__*",
+      "mcp__agent-context__*"
+    ],
+    "deny": []
+  },
+  "autonomy": {
+    "level": "full",
+    "description": "Агент работает полностью автономно. Все операции разрешены без подтверждения.",
+    "never_do": [
+      "drop production databases",
+      "modify K3s cluster resources",
+      "touch moex-bot project files",
+      "scrape sites без проверки robots.txt",
+      "хранить персональные данные пользователей",
+      "отправлять сообщения в Telegram без явного вызова отчёта",
+      "удалять записи из БД без архивирования"
+    ]
+  },
+  "server": {
+    "host": "192.168.1.74",
+    "tailscale_host": "100.81.243.12",
+    "ssh_user": "flomaster",
+    "project_path": "/home/flomaster/teatr-bot"
+  },
+  "database": {
+    "host": "192.168.1.74",
+    "port": 5435,
+    "name": "teatr_bot",
+    "user": "teatr_user",
+    "pool_min": 2,
+    "pool_max": 10,
+    "driver": "asyncpg"
+  },
+  "notifications": {
+    "telegram_on_task_complete": true,
+    "telegram_on_error": true,
+    "alert_if_data_stale_hours": 24
+  },
+  "code_style": {
+    "language": "python",
+    "version": "3.11",
+    "type_hints": "required",
+    "docstrings": "required for public methods",
+    "max_line_length": 100,
+    "test_coverage_target": 80,
+    "comments_language": "russian"
+  },
+  "checkpoints": {
+    "description": "Агент создаёт CHECKPOINT после критических операций",
+    "trigger_on": [
+      "database migration applied",
+      "new data source added",
+      "scheduler configuration changed",
+      "telegram commands changed",
+      "digest format changed"
+    ],
+    "checkpoint_format": "CHECKPOINT_{timestamp}_{description}.md в .claude/tasks/"
+  },
+  "task_workflow": {
+    "task_directory": ".claude/tasks/",
+    "status_values": ["TODO", "IN_PROGRESS", "DONE", "BLOCKED"],
+    "always_read_claude_md_first": true,
+    "always_run_tests_before_commit": true,
+    "mcp_server": "http://192.168.1.74:8765"
+  }
+}
