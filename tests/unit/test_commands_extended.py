@@ -38,8 +38,8 @@ class TestDigestCallback:
     """Тесты callback-обработчика inline-кнопок дайджеста."""
 
     @pytest.mark.asyncio
-    async def test_digest_today(self, mock_context):
-        """digest_today → date_from == date_to == today."""
+    async def test_digest_today_from_cache(self, mock_context):
+        """digest_today с кэшем → отдаёт из кэша без вызова LLM."""
         from src.reports.telegram_commands import digest_callback
 
         update = MagicMock()
@@ -49,12 +49,40 @@ class TestDigestCallback:
         update.callback_query = query
 
         with patch("src.reports.telegram_commands.get_pool") as mock_gp, \
-             patch("src.reports.telegram_commands.get_digest_data") as mock_dd, \
-             patch("src.reports.telegram_commands.get_recent_news") as mock_rn, \
+             patch("src.reports.telegram_commands.get_fresh_digest") as mock_cache, \
              patch("src.reports.telegram_commands.build_digest") as mock_bd, \
              patch("src.reports.telegram_commands.send_message") as mock_sm:
 
             mock_gp.return_value = AsyncMock()
+            mock_cache.return_value = {"content": "Кэшированный дайджест"}
+
+            await digest_callback(update, mock_context)
+
+            query.answer.assert_awaited_once()
+            mock_bd.assert_not_awaited()  # LLM не вызывался
+            mock_sm.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_digest_today_no_cache(self, mock_context):
+        """digest_today без кэша → генерирует через LLM."""
+        from src.reports.telegram_commands import digest_callback
+
+        update = MagicMock()
+        query = AsyncMock()
+        query.data = "digest_today"
+        query.message.chat_id = 12345
+        update.callback_query = query
+
+        with patch("src.reports.telegram_commands.get_pool") as mock_gp, \
+             patch("src.reports.telegram_commands.get_fresh_digest") as mock_cache, \
+             patch("src.reports.telegram_commands.get_digest_data") as mock_dd, \
+             patch("src.reports.telegram_commands.get_recent_news") as mock_rn, \
+             patch("src.reports.telegram_commands.build_digest") as mock_bd, \
+             patch("src.reports.telegram_commands.save_digest") as mock_save, \
+             patch("src.reports.telegram_commands.send_message") as mock_sm:
+
+            mock_gp.return_value = AsyncMock()
+            mock_cache.return_value = None  # нет кэша
             mock_dd.return_value = {"shows": [], "premieres": [], "stats": {}}
             mock_rn.return_value = []
             mock_bd.return_value = "Дайджест"
@@ -134,6 +162,7 @@ class TestCmdStatus:
         with patch("src.reports.telegram_commands.get_pool") as mock_gp, \
              patch("src.reports.telegram_commands.get_bot_stats") as mock_bs, \
              patch("src.reports.telegram_commands.get_news_count") as mock_nc, \
+             patch("src.reports.telegram_commands.get_all_digests_status") as mock_ds, \
              patch("src.reports.telegram_commands.send_message") as mock_sm:
 
             mock_gp.return_value = AsyncMock()
@@ -144,6 +173,10 @@ class TestCmdStatus:
                 "last_collected": datetime(2026, 3, 14, 6, 0),
             }
             mock_nc.return_value = 15
+            mock_ds.return_value = [
+                {"period_key": "today", "shows_count": 5,
+                 "generated_at": datetime(2026, 3, 14, 7, 0), "status": "fresh"},
+            ]
 
             await cmd_status(mock_update, mock_context)
 
@@ -153,6 +186,7 @@ class TestCmdStatus:
             assert "1200" in call_text
             assert "15" in call_text
             assert "14.03.2026" in call_text
+            assert "today" in call_text
 
 
 class TestCmdNews:
