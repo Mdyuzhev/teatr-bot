@@ -1,0 +1,37 @@
+name: CI — Тесты
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: /home/flomaster/teatr-bot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync code to server
+        run: |
+          rsync -a --delete \
+            --exclude='.env' \
+            --exclude='venv/' \
+            --exclude='__pycache__/' \
+            --exclude='.pytest_cache/' \
+            "$GITHUB_WORKSPACE/" /home/flomaster/teatr-bot/
+
+      - name: Run unit tests
+        run: |
+          . venv/bin/activate
+          python -m pytest tests/unit/ -v --tb=short
+
+      - name: Run integration tests
+        run: |
+          . venv/bin/activate
+          python -m pytest tests/integration/ -v --tb=short
