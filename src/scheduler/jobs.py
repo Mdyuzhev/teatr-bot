@@ -16,6 +16,13 @@ from src.brain.digest_builder import build_digest
 from src.db.queries.digests import save_digest
 from src.db.queries.reports import get_digest_data
 from src.db.queries.rss import get_recent_news
+from src.db.queries.notifications import (
+    get_new_show_dates, get_last_chance_shows,
+    is_notification_sent, log_notification,
+)
+from src.db.queries.preferences import (
+    get_favorite_users_for_theater, get_watchlist_users_for_show,
+)
 from src.config import config
 
 
@@ -122,5 +129,75 @@ async def generate_digests_job(pool) -> dict:
     logger.info(
         "Генерация завершена: {} дайджестов, {} ошибок",
         stats["generated"], stats["errors"],
+    )
+    return stats
+
+
+async def notifications_job(pool) -> dict:
+    """
+    Задача 09:00: уведомления для подписчиков.
+
+    1. Новые даты в избранных театрах → уведомление подписчикам
+    2. Новые даты для спектаклей из вишлиста → уведомление
+    3. Последний шанс (≤2 даты) → уведомление подписчикам вишлиста
+
+    Возвращает статистику.
+    """
+    logger.info("=== Рассылка уведомлений ===")
+    stats = {"sent": 0, "skipped": 0, "errors": 0}
+
+    try:
+        # 1. Новые даты за последние 24 часа
+        new_dates = await get_new_show_dates(pool, hours=24)
+
+        # Группируем по театру для уведомлений об избранных
+        theater_dates: dict[int, list] = {}
+        show_dates_map: dict[int, list] = {}
+        for sd in new_dates:
+            tid = sd["theater_id"]
+            sid = sd["show_id"]
+            theater_dates.setdefault(tid, []).append(sd)
+            show_dates_map.setdefault(sid, []).append(sd)
+
+        # Уведомления: новые показы в избранных театрах
+        for theater_id, dates in theater_dates.items():
+            users = await get_favorite_users_for_theater(pool, theater_id)
+            for user_id in users:
+                ref_id = dates[0]["show_date_id"]
+                if await is_notification_sent(pool, user_id, "new_at_favorite", ref_id):
+                    stats["skipped"] += 1
+                    continue
+                await log_notification(pool, user_id, "new_at_favorite", ref_id)
+                stats["sent"] += 1
+
+        # Уведомления: новые даты для спектаклей в вишлисте
+        for show_id, dates in show_dates_map.items():
+            users = await get_watchlist_users_for_show(pool, show_id)
+            for user_id in users:
+                ref_id = dates[0]["show_date_id"]
+                if await is_notification_sent(pool, user_id, "new_date", ref_id):
+                    stats["skipped"] += 1
+                    continue
+                await log_notification(pool, user_id, "new_date", ref_id)
+                stats["sent"] += 1
+
+        # 2. Последний шанс — ровно 2 даты осталось
+        last_chance = await get_last_chance_shows(pool)
+        for show in last_chance:
+            users = await get_watchlist_users_for_show(pool, show["show_id"])
+            for user_id in users:
+                if await is_notification_sent(pool, user_id, "last_chance", show["show_id"]):
+                    stats["skipped"] += 1
+                    continue
+                await log_notification(pool, user_id, "last_chance", show["show_id"])
+                stats["sent"] += 1
+
+    except Exception as e:
+        stats["errors"] += 1
+        logger.error("Ошибка рассылки уведомлений: {}", e)
+
+    logger.info(
+        "Уведомления: {} отправлено, {} пропущено, {} ошибок",
+        stats["sent"], stats["skipped"], stats["errors"],
     )
     return stats

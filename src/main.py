@@ -4,18 +4,21 @@
 """
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters,
+)
 
 from src.config import config
 from src.db.connection import get_pool
 from src.collectors.kudago import KudaGoCollector
 from src.collectors.rss_feeds import RssCollector
-from src.scheduler.jobs import generate_digests_job
+from src.scheduler.jobs import generate_digests_job, notifications_job
 from src.reports.telegram_commands import (
     cmd_start, cmd_digest, cmd_today, cmd_weekend, cmd_week,
     cmd_premieres, cmd_theater, cmd_status, cmd_refresh,
-    cmd_news, cmd_rss_refresh,
-    digest_callback,
+    cmd_news, cmd_rss_refresh, cmd_favorites, cmd_watchlist, cmd_settings,
+    digest_callback, preference_callback, reply_keyboard_handler,
 )
 
 
@@ -64,6 +67,17 @@ async def scheduled_digest_generation():
         logger.error("Ошибка генерации дайджестов: {}", e)
 
 
+async def scheduled_notifications():
+    """Рассылка уведомлений об избранных театрах и вишлисте (09:00 МСК)."""
+    logger.info("=== Плановая рассылка уведомлений ===")
+    try:
+        pool = await get_pool()
+        stats = await notifications_job(pool)
+        logger.info("Уведомления: {}", stats)
+    except Exception as e:
+        logger.error("Ошибка рассылки уведомлений: {}", e)
+
+
 async def post_init(application):
     """Запуск планировщика после старта event loop."""
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
@@ -88,10 +102,18 @@ async def post_init(application):
         minute=0,
         id="digest_daily",
     )
+    scheduler.add_job(
+        scheduled_notifications,
+        "cron",
+        hour=config.COLLECTION_HOUR + 3,
+        minute=0,
+        id="notifications_daily",
+    )
     scheduler.start()
     logger.info(
-        "Планировщик: KudaGo {:02d}:00, RSS {:02d}:30, дайджесты {:02d}:00 МСК",
-        config.COLLECTION_HOUR, config.COLLECTION_HOUR, config.COLLECTION_HOUR + 1,
+        "Планировщик: KudaGo {:02d}:00, RSS {:02d}:30, дайджесты {:02d}:00, уведомления {:02d}:00 МСК",
+        config.COLLECTION_HOUR, config.COLLECTION_HOUR,
+        config.COLLECTION_HOUR + 1, config.COLLECTION_HOUR + 3,
     )
 
 
@@ -121,7 +143,14 @@ def main():
     app.add_handler(CommandHandler("refresh", cmd_refresh))
     app.add_handler(CommandHandler("news", cmd_news))
     app.add_handler(CommandHandler("rss_refresh", cmd_rss_refresh))
+    app.add_handler(CommandHandler("favorites", cmd_favorites))
+    app.add_handler(CommandHandler("watchlist", cmd_watchlist))
+    app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CallbackQueryHandler(digest_callback, pattern="^digest_"))
+    app.add_handler(CallbackQueryHandler(preference_callback, pattern="^(fav:|wl:|rm_fav:|rm_wl:|goto_)"))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, reply_keyboard_handler
+    ))
 
     # Запуск polling
     logger.info("Бот запущен, ожидаю команды...")
