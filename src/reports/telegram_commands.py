@@ -21,9 +21,11 @@ from loguru import logger
 from src.db.connection import get_pool
 from src.db.queries.shows import get_shows_by_period, get_shows_by_theater, get_premieres
 from src.db.queries.reports import get_digest_data, get_bot_stats
+from src.db.queries.rss import get_recent_news, get_news_count
 from src.brain.digest_builder import build_digest
 from src.reports.telegram_sender import send_message
 from src.collectors.kudago import KudaGoCollector
+from src.collectors.rss_feeds import RssCollector
 from src.config import config
 
 
@@ -86,10 +88,12 @@ async def digest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     pool = await get_pool()
     digest_data = await get_digest_data(pool, date_from, date_to, limit=config.MAX_DIGEST_SHOWS)
+    rss_news = await get_recent_news(pool, days=7, limit=10)
     text = await build_digest(
         digest_data["shows"], label,
         premieres=digest_data["premieres"],
         stats=digest_data["stats"],
+        rss_news=rss_news,
     )
     await send_message(context.bot, query.message.chat_id, text)
 
@@ -201,6 +205,7 @@ async def cmd_theater(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     pool = await get_pool()
     stats = await get_bot_stats(pool)
+    rss_count = await get_news_count(pool)
 
     last = stats.get("last_collected")
     last_str = last.strftime("%d.%m.%Y %H:%M") if last else "никогда"
@@ -210,6 +215,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Театров: {stats.get('theaters', 0)}\n"
         f"Спектаклей: {stats.get('shows', 0)}\n"
         f"Предстоящих показов: {stats.get('active_dates', 0)}\n"
+        f"RSS-новостей: {rss_count}\n"
         f"Последний сбор: {last_str}"
     )
     await send_message(context.bot, update.effective_chat.id, text)
@@ -236,6 +242,55 @@ async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"Театров: {stats['theaters']}, "
         f"спектаклей: {stats['shows']}, "
         f"дат: {stats['dates']}"
+    )
+    await send_message(context.bot, chat_id, text)
+
+
+# ── /news ──
+
+async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    pool = await get_pool()
+    news = await get_recent_news(pool, days=7, limit=10)
+    if not news:
+        await send_message(context.bot, update.effective_chat.id,
+                           "Новостей театров за последнюю неделю нет.")
+        return
+
+    lines = ["<b>Новости театров (7 дней)</b>\n"]
+    for item in news:
+        theater = item.get("theater_name", "")
+        title = item.get("title", "")
+        url = item.get("url", "")
+        pub = item.get("published_at")
+        date_str = pub.strftime("%d.%m") if pub else ""
+        if url:
+            lines.append(f"  {date_str} <b>{theater}</b>: <a href=\"{url}\">{title}</a>")
+        else:
+            lines.append(f"  {date_str} <b>{theater}</b>: {title}")
+
+    await send_message(context.bot, update.effective_chat.id, "\n".join(lines))
+
+
+# ── /rss_refresh ──
+
+async def cmd_rss_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    await send_message(context.bot, chat_id, "Собираю RSS-новости...")
+
+    collector = RssCollector()
+    news = collector.collect_all()
+
+    if not news:
+        await send_message(context.bot, chat_id, "Новых RSS-записей не найдено.")
+        return
+
+    pool = await get_pool()
+    stats = await collector.save_to_db(news, pool)
+
+    text = (
+        f"RSS сбор завершён.\n"
+        f"Новых: {stats['saved']}, дубликатов: {stats['skipped']}, "
+        f"без театра: {stats['no_theater']}"
     )
     await send_message(context.bot, chat_id, text)
 

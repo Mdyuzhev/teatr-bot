@@ -18,27 +18,45 @@ from src.config import config
 
 async def build_digest(shows: list[dict], period_label: str,
                        premieres: list[dict] | None = None,
-                       stats: dict | None = None) -> str:
+                       stats: dict | None = None,
+                       rss_news: list[dict] | None = None) -> str:
     """Сгенерировать дайджест через Claude. При ошибке — raw-список."""
     if not shows:
         return f"На период «{period_label}» спектаклей не найдено."
 
     raw_text = _format_raw_list(shows, period_label, premieres, stats)
 
+    # Добавляем RSS-контекст для Claude
+    rss_context = _format_rss_context(rss_news) if rss_news else ""
+
     if not config.ANTHROPIC_API_KEY:
         logger.warning("ANTHROPIC_API_KEY не задан — отдаю raw-список")
-        return raw_text
+        result = raw_text
+        if rss_news:
+            result += "\n\n" + _format_rss_for_raw(rss_news)
+        return result
 
     try:
-        return await _call_claude(raw_text, period_label)
+        return await _call_claude(raw_text, period_label, rss_context)
     except Exception as e:
         logger.warning("Claude API недоступен ({}), отдаю raw-список", e)
-        return raw_text
+        result = raw_text
+        if rss_news:
+            result += "\n\n" + _format_rss_for_raw(rss_news)
+        return result
 
 
-async def _call_claude(raw_text: str, period_label: str) -> str:
+async def _call_claude(raw_text: str, period_label: str,
+                       rss_context: str = "") -> str:
     """Вызов Claude API для генерации дайджеста."""
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+
+    rss_block = ""
+    if rss_context:
+        rss_block = f"""
+
+Свежие новости театров (используй для обогащения дайджеста — упомяни если релевантно):
+{rss_context}"""
 
     prompt = f"""Ты — театральный обозреватель Москвы. Составь краткий дайджест спектаклей
 за период «{period_label}» на основе данных ниже.
@@ -49,10 +67,11 @@ async def _call_claude(raw_text: str, period_label: str) -> str:
 - Укажи цены, если известны
 - Группируй по дням
 - Будь лаконичен, не больше 3-4 строк на спектакль
+- Если есть свежие новости театров — упомяни кратко в конце
 - В конце — краткая сводка (сколько театров, спектаклей)
 
 Данные:
-{raw_text}"""
+{raw_text}{rss_block}"""
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -106,4 +125,28 @@ def _format_raw_list(shows: list[dict], period_label: str,
             f"    {show.get('theater_name', '')}{price}"
         )
 
+    return "\n".join(lines)
+
+
+def _format_rss_context(news: list[dict]) -> str:
+    """Форматировать RSS-новости для контекста Claude."""
+    lines = []
+    for item in news[:10]:
+        theater = item.get("theater_name", "")
+        title = item.get("title", "")
+        lines.append(f"- [{theater}] {title}")
+    return "\n".join(lines)
+
+
+def _format_rss_for_raw(news: list[dict]) -> str:
+    """Форматировать RSS-новости для raw-списка (fallback без Claude)."""
+    lines = ["<b>Новости театров:</b>"]
+    for item in news[:5]:
+        theater = item.get("theater_name", "")
+        title = item.get("title", "")
+        url = item.get("url", "")
+        if url:
+            lines.append(f"  {theater}: <a href=\"{url}\">{title}</a>")
+        else:
+            lines.append(f"  {theater}: {title}")
     return "\n".join(lines)
