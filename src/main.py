@@ -133,14 +133,17 @@ def main():
     logger.info("Запуск театрального бота")
 
     # Telegram Application
+    # Telegram API заблокирован на сервере — доступен только через VPN-прокси
+    tg_proxy = config.ANTHROPIC_PROXY or None
     request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
+        proxy=tg_proxy,
     )
-    # get_updates использует отдельный request с длинным read_timeout для long-polling
     get_updates_request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=60.0,
+        proxy=tg_proxy,
     )
     app = (
         ApplicationBuilder()
