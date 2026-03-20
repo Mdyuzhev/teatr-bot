@@ -8,6 +8,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters,
 )
+from telegram.request import HTTPXRequest
 
 from src.config import config
 from src.db.connection import get_pool
@@ -132,7 +133,17 @@ def main():
     logger.info("Запуск театрального бота")
 
     # Telegram Application
-    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=30.0,
+    )
+    app = (
+        ApplicationBuilder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .request(request)
+        .post_init(post_init)
+        .build()
+    )
 
     # Регистрация команд
     app.add_handler(CommandHandler("start", cmd_start))

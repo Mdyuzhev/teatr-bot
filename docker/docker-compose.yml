@@ -14,6 +14,8 @@ services:
       TZ: Europe/Moscow
     volumes:
       - ../logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       teatr-postgres:
         condition: service_healthy
