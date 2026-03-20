@@ -137,10 +137,16 @@ def main():
         connect_timeout=30.0,
         read_timeout=30.0,
     )
+    # get_updates использует отдельный request с длинным read_timeout для long-polling
+    get_updates_request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=60.0,
+    )
     app = (
         ApplicationBuilder()
         .token(config.TELEGRAM_BOT_TOKEN)
         .request(request)
+        .get_updates_request(get_updates_request)
         .post_init(post_init)
         .build()
     )
