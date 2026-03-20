@@ -12,6 +12,9 @@ services:
       - ../.env
     environment:
       TZ: Europe/Moscow
+      HTTPS_PROXY: http://vpn-proxy:8888
+      HTTP_PROXY: http://vpn-proxy:8888
+      NO_PROXY: teatr-postgres,localhost,127.0.0.1
     volumes:
       - ../logs:/app/logs
     extra_hosts:
