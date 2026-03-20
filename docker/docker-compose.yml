@@ -8,23 +8,13 @@ services:
     image: teatr-bot:latest
     container_name: teatr-bot
     restart: unless-stopped
+    network_mode: host
     env_file:
       - ../.env
     environment:
       TZ: Europe/Moscow
-      HTTPS_PROXY: http://vpn-proxy:8888
-      HTTP_PROXY: http://vpn-proxy:8888
-      NO_PROXY: teatr-postgres,localhost,127.0.0.1
     volumes:
       - ../logs:/app/logs
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      teatr-postgres:
-        condition: service_healthy
-    networks:
-      - teatr-network
-      - vpn-network
     logging:
       driver: json-file
       options:
@@ -55,20 +45,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    networks:
-      - teatr-network
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
-
-networks:
-  teatr-network:
-    name: teatr-network
-  vpn-network:
-    external: true
-    name: vpn-proxy_default
 
 volumes:
   teatr_pg_data:
