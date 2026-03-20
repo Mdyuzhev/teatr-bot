@@ -794,17 +794,21 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
-                   s.is_premiere, s.description,
-                   t.id AS theater_id, t.name AS theater_name,
-                   t.slug AS theater_slug, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max,
-                   sd.tickets_url
-            FROM show_dates sd
-            JOIN shows s ON s.id = sd.show_id
-            JOIN theaters t ON t.id = s.theater_id
-            WHERE sd.date BETWEEN $1 AND $2
-              AND sd.is_cancelled = FALSE
+            SELECT * FROM (
+                SELECT DISTINCT ON (s.id)
+                       s.id AS show_id, s.title, s.slug, s.age_rating,
+                       s.is_premiere, s.description,
+                       t.id AS theater_id, t.name AS theater_name,
+                       t.slug AS theater_slug, t.metro,
+                       sd.date, sd.time, sd.price_min, sd.price_max,
+                       sd.tickets_url
+                FROM show_dates sd
+                JOIN shows s ON s.id = sd.show_id
+                JOIN theaters t ON t.id = s.theater_id
+                WHERE sd.date BETWEEN $1 AND $2
+                  AND sd.is_cancelled = FALSE
+                ORDER BY s.id, sd.date, sd.time
+            ) sub
             ORDER BY RANDOM()
             LIMIT 1
             """,
@@ -835,22 +839,26 @@ async def _search_shows(update: Update, context: ContextTypes.DEFAULT_TYPE,
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
-                   s.is_premiere, s.description,
-                   t.id AS theater_id, t.name AS theater_name,
-                   t.slug AS theater_slug, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max,
-                   sd.tickets_url
-            FROM show_dates sd
-            JOIN shows s ON s.id = sd.show_id
-            JOIN theaters t ON t.id = s.theater_id
-            WHERE sd.date BETWEEN $1 AND $2
-              AND sd.is_cancelled = FALSE
-              AND (
-                  LOWER(s.title) LIKE $3
-                  OR LOWER(t.name) LIKE $3
-              )
-            ORDER BY sd.date, sd.time
+            SELECT * FROM (
+                SELECT DISTINCT ON (s.id)
+                       s.id AS show_id, s.title, s.slug, s.age_rating,
+                       s.is_premiere, s.description,
+                       t.id AS theater_id, t.name AS theater_name,
+                       t.slug AS theater_slug, t.metro,
+                       sd.date, sd.time, sd.price_min, sd.price_max,
+                       sd.tickets_url
+                FROM show_dates sd
+                JOIN shows s ON s.id = sd.show_id
+                JOIN theaters t ON t.id = s.theater_id
+                WHERE sd.date BETWEEN $1 AND $2
+                  AND sd.is_cancelled = FALSE
+                  AND (
+                      LOWER(s.title) LIKE $3
+                      OR LOWER(t.name) LIKE $3
+                  )
+                ORDER BY s.id, sd.date, sd.time
+            ) sub
+            ORDER BY date, time
             LIMIT 20
             """,
             today, date_to, f"%{query_text.lower()}%",

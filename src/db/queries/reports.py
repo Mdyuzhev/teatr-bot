@@ -14,21 +14,25 @@ async def get_digest_data(pool, date_from: date, date_to: date, limit: int = 20)
     - stats: общая статистика (theaters_count, shows_count, dates_count)
     """
     async with pool.acquire() as conn:
-        # Все показы за период
+        # Уникальные спектакли за период (ближайшая дата, без дублей)
         shows = await conn.fetch(
             """
-            SELECT s.id AS show_id, s.title, s.slug, s.age_rating,
-                   s.is_premiere, s.description, s.image_url,
-                   t.id AS theater_id, t.name AS theater_name,
-                   t.slug AS theater_slug, t.address, t.metro,
-                   sd.date, sd.time, sd.price_min, sd.price_max,
-                   sd.tickets_url
-            FROM show_dates sd
-            JOIN shows s ON s.id = sd.show_id
-            JOIN theaters t ON t.id = s.theater_id
-            WHERE sd.date BETWEEN $1 AND $2
-              AND sd.is_cancelled = FALSE
-            ORDER BY sd.date, sd.time
+            SELECT * FROM (
+                SELECT DISTINCT ON (s.id)
+                       s.id AS show_id, s.title, s.slug, s.age_rating,
+                       s.is_premiere, s.description, s.image_url,
+                       t.id AS theater_id, t.name AS theater_name,
+                       t.slug AS theater_slug, t.address, t.metro,
+                       sd.date, sd.time, sd.price_min, sd.price_max,
+                       sd.tickets_url
+                FROM show_dates sd
+                JOIN shows s ON s.id = sd.show_id
+                JOIN theaters t ON t.id = s.theater_id
+                WHERE sd.date BETWEEN $1 AND $2
+                  AND sd.is_cancelled = FALSE
+                ORDER BY s.id, sd.date, sd.time
+            ) sub
+            ORDER BY date, time
             LIMIT $3
             """,
             date_from, date_to, limit,
