@@ -11,18 +11,18 @@ git diff --stat
 
 ## Шаг 2: Синхронизация с сервером
 Через нативные MCP-инструменты (НЕ через mcp_call.py):
-1. `mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && git fetch origin && git reset --hard origin/main`
-2. `mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && . venv/bin/activate && pip install -r requirements.txt 2>&1 | tail -5`
+1. `mcp__homelab__run_shell_command` — `cd /home/YOUR_SSH_USER/teatr-bot && git fetch origin && git reset --hard origin/main`
+2. `mcp__homelab__run_shell_command` — `cd /home/YOUR_SSH_USER/teatr-bot && . venv/bin/activate && pip install -r requirements.txt 2>&1 | tail -5`
 
 ## Шаг 3: Тесты на сервере
-`mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && . venv/bin/activate && python -m pytest tests/ -v 2>&1`
+`mcp__homelab__run_shell_command` — `cd /home/YOUR_SSH_USER/teatr-bot && . venv/bin/activate && python -m pytest tests/ -v 2>&1`
 
 ## Шаг 4: Состояние бота и БД
 1. `mcp__homelab__run_shell_command` — `pgrep -fa "src.main" || echo "BOT:stopped"`
 2. `mcp__homelab__exec_in_container` (teatr-postgres) — `psql -U teatr_user -d teatr_bot -c "SELECT (SELECT count(*) FROM theaters) as theaters, (SELECT count(*) FROM shows) as shows, (SELECT count(*) FROM show_dates WHERE date >= CURRENT_DATE) as upcoming;"`
 
 ## Шаг 5: Сохранение контекста в память
-Обнови или создай файл `C:/Users/Михаил/.claude/projects/e--teatr/memory/project_session_log.md` с:
+Обнови или создай файл `memory/project_session_log.md (в директории auto memory проекта)` с:
 - Дата сессии
 - Что было сделано (коммиты)
 - Текущий статус задач (T001-T004)

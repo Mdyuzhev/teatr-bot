@@ -25,6 +25,10 @@ logs/*.log.*
 .DS_Store
 Thumbs.db
 
+# Личная конфигурация инфраструктуры (не часть кода)
+.mcp.json
+.claude/proxy-setup.md
+
 # Прокси-лаунчер
 start-claude.bat
 

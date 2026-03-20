@@ -30,13 +30,13 @@
     ]
   },
   "server": {
-    "host": "192.168.1.74",
-    "tailscale_host": "100.81.243.12",
-    "ssh_user": "flomaster",
-    "project_path": "/home/flomaster/teatr-bot"
+    "host": "YOUR_SERVER_IP",
+    "tailscale_host": "YOUR_TAILSCALE_IP",
+    "ssh_user": "YOUR_SSH_USER",
+    "project_path": "/home/YOUR_SSH_USER/teatr-bot"
   },
   "database": {
-    "host": "192.168.1.74",
+    "host": "YOUR_SERVER_IP",
     "port": 5435,
     "name": "teatr_bot",
     "user": "teatr_user",
@@ -74,6 +74,6 @@
     "status_values": ["TODO", "IN_PROGRESS", "DONE", "BLOCKED"],
     "always_read_claude_md_first": true,
     "always_run_tests_before_commit": true,
-    "mcp_server": "http://192.168.1.74:8765"
+    "mcp_server": "http://YOUR_SERVER_IP:8765"
   }
 }

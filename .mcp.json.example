@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "homelab": {
+      "type": "http",
+      "url": "http://YOUR_SERVER_IP:8765/mcp"
+    },
+    "agent-context": {
+      "type": "http",
+      "url": "http://127.0.0.1:8766/mcp"
+    }
+  }
+}

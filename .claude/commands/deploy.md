@@ -15,7 +15,7 @@
 ## Шаг 2: Pull на сервере
 
 ```
-mcp__homelab__run_shell_command: cd /home/flomaster/teatr-bot && git pull origin main
+mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && git pull origin main
 ```
 
 ## Шаг 3: Перезапуск бота
@@ -25,7 +25,7 @@ mcp__homelab__run_shell_command: cd /home/flomaster/teatr-bot && git pull origin
 mcp__homelab__run_shell_command: pkill -9 -f "python.*src.main" 2>/dev/null; sleep 2
 
 # Запустить заново
-mcp__homelab__run_shell_command: cd /home/flomaster/teatr-bot && nohup venv/bin/python -m src.main > /tmp/teatr-bot.log 2>&1 & echo "PID: $!"
+mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && nohup venv/bin/python -m src.main > /tmp/teatr-bot.log 2>&1 & echo "PID: $!"
 
 # Подождать и проверить лог
 mcp__homelab__run_shell_command: sleep 3 && tail -5 /tmp/teatr-bot.log
@@ -41,7 +41,7 @@ mcp__homelab__run_shell_command: sleep 3 && tail -5 /tmp/teatr-bot.log
 ## Шаг 4: Тесты на сервере
 
 ```
-mcp__homelab__run_shell_command: cd /home/flomaster/teatr-bot && venv/bin/python -m pytest tests/ -v
+mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && venv/bin/python -m pytest tests/ -v
 ```
 
 ## Шаг 5: Отчёт
@@ -63,4 +63,4 @@ Pull:    ✅ / ❌
 - **НЕ** использовать `gh run` — нет CI
 - Деплой ТОЛЬКО через MCP shell-команды на сервер
 - Бот запускается через `venv/bin/python -m src.main`
-- Путь на сервере: `/home/flomaster/teatr-bot`
+- Путь на сервере: `/home/YOUR_SSH_USER/teatr-bot`

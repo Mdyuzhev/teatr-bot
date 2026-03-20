@@ -5,13 +5,14 @@
   python scripts/mcp_call.py run_shell_command '{"command": "echo hello"}'
   python scripts/mcp_call.py get_docker_ps '{}'
 """
+import os
 import sys
 import json
 import uuid
 import requests
 
 
-MCP_SERVER = "http://192.168.1.74:8765"
+MCP_SERVER = os.getenv("MCP_SERVER_URL", "http://localhost:8765")
 MCP_ENDPOINT = f"{MCP_SERVER}/mcp"
 
 

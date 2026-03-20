@@ -18,7 +18,7 @@ ls Tasks/backlog/ | grep .md
 2. Выведи план
 3. Выполняй по шагам
 4. После каждого шага — тесты через MCP:
-   `mcp__homelab__run_shell_command` — `cd /home/flomaster/teatr-bot && . venv/bin/activate && python -m pytest tests/ -v --tb=short 2>&1 | tail -30`
+   `mcp__homelab__run_shell_command` — `cd /home/YOUR_SSH_USER/teatr-bot && . venv/bin/activate && python -m pytest tests/ -v --tb=short 2>&1 | tail -30`
 5. По завершении:
    - Обнови статус задачи на DONE
    - Залей код на сервер через MCP

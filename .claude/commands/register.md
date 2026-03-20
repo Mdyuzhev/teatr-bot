@@ -6,7 +6,7 @@
 ```bash
 node -e "
 const fs = require('fs');
-const path = 'C:/Users/Михаил/.agent-context/registry.json';
+const path = process.env.HOME + '/.agent-context/registry.json';
 
 let registry = {};
 try {
