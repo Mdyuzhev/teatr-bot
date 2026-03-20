@@ -16,7 +16,7 @@ class Config:
     """Настройки проекта из переменных окружения."""
 
     # PostgreSQL
-    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "teatr-postgres")
     POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5435"))
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "teatr_bot")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "teatr_user")

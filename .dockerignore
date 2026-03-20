@@ -1,0 +1,26 @@
+# Секреты — никогда не должны попасть в образ
+.env
+.env.*
+
+# Служебные директории — не нужны в runtime
+.git/
+.claude/
+.pytest_cache/
+tests/
+Tasks/
+.mcp.json*
+start-claude.bat
+
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker-файлы (не нужны внутри контейнера)
+docker/
+Dockerfile
+
+# Документация
+*.md
+
+# НЕ исключаем requirements.txt — Dockerfile делает COPY requirements.txt . на стадии deps

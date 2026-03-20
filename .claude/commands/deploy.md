@@ -18,30 +18,30 @@
 mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && git pull origin main
 ```
 
-## Шаг 3: Перезапуск бота
+## Шаг 3: Пересборка и рестарт (Docker)
 
 ```
-# Убить все процессы бота
-mcp__homelab__run_shell_command: pkill -9 -f "python.*src.main" 2>/dev/null; sleep 2
+# Пересобрать образ бота после изменений кода
+mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && docker compose -f docker/docker-compose.yml build teatr-bot
 
-# Запустить заново
-mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && nohup venv/bin/python -m src.main > /tmp/teatr-bot.log 2>&1 & echo "PID: $!"
+# Перезапустить только бота (БД не трогаем)
+mcp__homelab__run_shell_command: docker compose -f /home/YOUR_SSH_USER/teatr-bot/docker/docker-compose.yml up -d --no-deps teatr-bot
 
-# Подождать и проверить лог
-mcp__homelab__run_shell_command: sleep 3 && tail -5 /tmp/teatr-bot.log
+# Статус контейнеров
+mcp__homelab__run_shell_command: docker ps --filter name=teatr --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-Бот должен показать:
+Бот должен показать в логах:
 - "Запуск театрального бота"
 - "Бот запущен, ожидаю команды..."
 - "Планировщик: KudaGo 06:00..."
 
 Если в логе ошибка — сообщить пользователю, НЕ продолжать.
 
-## Шаг 4: Тесты на сервере
+## Шаг 4: Проверка логов
 
 ```
-mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && venv/bin/python -m pytest tests/ -v
+mcp__homelab__run_shell_command: docker logs teatr-bot --tail=30
 ```
 
 ## Шаг 5: Отчёт
@@ -50,10 +50,10 @@ mcp__homelab__run_shell_command: cd /home/YOUR_SSH_USER/teatr-bot && venv/bin/py
 ══════════════════════════════
   Деплой — $DATE
 ══════════════════════════════
-Коммит:  [hash] [message]
-Pull:    ✅ / ❌
-Бот:     ✅ PID XXXX / ❌ [ошибка]
-Тесты:   XX passed, XX failed
+Коммит:      [hash] [message]
+Pull:        ✅ / ❌
+Контейнеры:  ✅ teatr-bot + teatr-postgres / ❌ [ошибка]
+Логи:        OK / traceback
 ══════════════════════════════
 ```
 
@@ -62,5 +62,5 @@ Pull:    ✅ / ❌
 - **НЕ** использовать GitHub Actions, CI/CD пайплайны — их нет
 - **НЕ** использовать `gh run` — нет CI
 - Деплой ТОЛЬКО через MCP shell-команды на сервер
-- Бот запускается через `venv/bin/python -m src.main`
+- Бот запускается через Docker: `docker compose -f docker/docker-compose.yml up -d`
 - Путь на сервере: `/home/YOUR_SSH_USER/teatr-bot`
