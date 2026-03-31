@@ -27,6 +27,15 @@ from src.reports.telegram_commands import (
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Глобальный обработчик ошибок — логирует и не роняет polling."""
+    import httpx
+    from telegram.error import NetworkError, TimedOut as TgTimedOut
+
+    # Сетевые ошибки polling (getUpdates) — только логируем, не шлём пользователю
+    if isinstance(context.error, (NetworkError, TgTimedOut, httpx.ConnectError,
+                                   httpx.RemoteProtocolError, httpx.ReadError)):
+        logger.warning("Сетевая ошибка: {}", context.error)
+        return
+
     logger.error("Необработанное исключение: {}", context.error, exc_info=context.error)
     if update and hasattr(update, "effective_chat") and update.effective_chat:
         try:
@@ -201,7 +210,7 @@ def main():
 
     # Запуск polling
     logger.info("Бот запущен, ожидаю команды...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
 
 
 if __name__ == "__main__":
