@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters,
+    ContextTypes, MessageHandler, filters,
 )
 from telegram.request import HTTPXRequest
 
@@ -23,6 +23,19 @@ from src.reports.telegram_commands import (
     digest_callback, preference_callback, reply_keyboard_handler,
     page_callback, metro_callback, theaters_callback,
 )
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный обработчик ошибок — логирует и не роняет polling."""
+    logger.error("Необработанное исключение: {}", context.error, exc_info=context.error)
+    if update and hasattr(update, "effective_chat") and update.effective_chat:
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Произошла ошибка. Попробуйте позже.",
+            )
+        except Exception:
+            pass
 
 
 async def scheduled_collection():
@@ -138,11 +151,15 @@ def main():
     request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
+        pool_timeout=10.0,
+        connection_pool_size=20,
         proxy=tg_proxy,
     )
     get_updates_request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=60.0,
+        pool_timeout=10.0,
+        connection_pool_size=10,
         proxy=tg_proxy,
     )
     app = (
@@ -178,6 +195,9 @@ def main():
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, reply_keyboard_handler
     ))
+
+    # Глобальный обработчик ошибок
+    app.add_error_handler(error_handler)
 
     # Запуск polling
     logger.info("Бот запущен, ожидаю команды...")
